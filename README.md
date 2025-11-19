@@ -1,2 +1,2 @@
 # contratos_pemex
-Sistema integral para la digitalización de un "LIBRO BLANCO" sobre los contratos en PEMEX
+SISTEMA INTEGRAL PARA LA DIGITALIZACIÓN DE "LIBROS BLANCOS" EN LA EMPRESA PETROLEOS MEXICANOS
