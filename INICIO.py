@@ -5,6 +5,8 @@ from hashlib import sha256
 import warnings
 import base64
 import re
+import io  # Nuevo import
+from core.database import get_db_manager  # Nuevo import
 
 from core.config import SYSTEM_READY, UPLOAD_DIR, OUTPUT_DIR, TEMPLATE_PATH, timestamp
 from core.ocr_utils import pdf_to_text
@@ -13,6 +15,7 @@ from core.excel_utils import load_excel, save_excel
 from core.ui_config import aplicar_estilo_global
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
+
 
 # === CONFIGURACIÓN DE RUTAS ===
 assets_dir = Path(__file__).parent / "assets"
@@ -133,6 +136,92 @@ def detectar_anexos_robusta(texto):
     
     return anexos_detectados
 
+# === FUNCIONES PARA POSTGRESQL ===
+def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
+    """
+    Guarda el contrato completo en PostgreSQL automáticamente
+    """
+    try:
+        manager = get_db_manager()
+        if not manager:
+            st.warning("⚠️ No se pudo conectar a PostgreSQL - Solo se guardará localmente")
+            return False
+        
+        # Preparar datos para PostgreSQL
+        datos_postgresql = {
+            'contrato': datos_contrato.get('contrato', ''),
+            'contratista': datos_contrato.get('contratista', ''),
+            'monto': datos_contrato.get('monto', ''),
+            'plazo': datos_contrato.get('plazo', ''),
+            'objeto': datos_contrato.get('objeto', ''),
+            'anexos': datos_contrato.get('anexos', []),
+            'area': datos_contrato.get('area', 'SUBDIRECCIÓN DE PRODUCCIÓN REGIÓN NORTE GERENCIA DE MANTENIMIENTO CONFIABILIDAD Y CONSTRUCCIÓN')
+        }
+        
+        # Guardar en PostgreSQL
+        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_postgresql, usuario)
+        
+        if contrato_id:
+            st.success(f"🗄️ **Contrato guardado en PostgreSQL** (ID: {contrato_id})")
+            return True
+        else:
+            st.warning("⚠️ No se pudo guardar en PostgreSQL, pero sí localmente")
+            return False
+            
+    except Exception as e:
+        st.warning(f"⚠️ Error guardando en PostgreSQL: {str(e)}")
+        st.info("📁 El contrato se guardó localmente, pero hubo un problema con la base de datos")
+        return False
+
+def preparar_archivos_para_postgresql(contrato_path, uploaded_file, datos_contrato):
+    """
+    Prepara todos los archivos del contrato para PostgreSQL
+    """
+    archivos_data = {
+        'principal': None,
+        'anexos': [],
+        'cedulas': [],
+        'soportes': []
+    }
+    
+    try:
+        # 1. Archivo principal (PDF del contrato)
+        if uploaded_file:
+            # Usar el archivo subido directamente
+            archivos_data['principal'] = uploaded_file
+        
+        # 2. Cédulas (Excel generado)
+        cedulas_path = contrato_path / "CEDULAS"
+        if cedulas_path.exists():
+            for cedula_file in cedulas_path.glob("*.xlsx"):
+                if cedula_file.is_file():
+                    with open(cedulas_path / cedula_file.name, "rb") as f:
+                        file_bytes = f.read()
+                        # Crear objeto similar a UploadedFile
+                        archivo_cedula = io.BytesIO(file_bytes)
+                        archivo_cedula.name = cedula_file.name
+                        archivos_data['cedulas'].append(archivo_cedula)
+        
+        # 3. Anexos detectados (crear archivos virtuales para los anexos detectados)
+        anexos_detectados = datos_contrato.get('anexos', [])
+        for anexo in anexos_detectados:
+            # Crear un archivo virtual con la información del anexo
+            anexo_info = f"ANEXO {anexo} - Detectado automáticamente del contrato"
+            archivo_anexo = io.BytesIO(anexo_info.encode('utf-8'))
+            archivo_anexo.name = f"ANEXO_{anexo}.txt"
+            archivos_data['anexos'].append(archivo_anexo)
+        
+        # 4. Soporte físico (el PDF original)
+        if uploaded_file:
+            # Usar el mismo archivo para soportes
+            archivos_data['soportes'].append(uploaded_file)
+        
+        return archivos_data
+        
+    except Exception as e:
+        st.error(f"❌ Error preparando archivos para PostgreSQL: {str(e)}")
+        return None
+
 # === FUNCIÓN PARA GENERAR EXCEL ===
 def generar_excel_contrato():
     """Genera el archivo Excel y lo prepara para descarga"""
@@ -171,6 +260,27 @@ def generar_excel_contrato():
         with open(out, "rb") as f:
             st.session_state["excel_generado"] = f.read()
         st.session_state["excel_filename"] = out.name
+        
+        # === GUARDAR COPIA EN CARPETA LOCAL DEL CONTRATO ===
+        try:
+            # Buscar la última ruta de contrato guardado
+            owner = st.session_state.get("nombre", "ANONIMO")
+            numero_contrato = d.get("contrato", "")
+            if owner and numero_contrato:
+                # Buscar en la carpeta del usuario el contrato más reciente que coincida
+                user_contratos_dir = Path("data") / owner.upper() / "CONTRATOS"
+                if user_contratos_dir.exists():
+                    # Buscar carpeta que contenga el número de contrato
+                    for carpeta in user_contratos_dir.iterdir():
+                        if carpeta.is_dir() and numero_contrato in carpeta.name:
+                            cedulas_dir = carpeta / "CEDULAS"
+                            cedulas_dir.mkdir(exist_ok=True)
+                            # Guardar copia del Excel en CEDULAS
+                            with open(cedulas_dir / out.name, "wb") as f:
+                                f.write(st.session_state["excel_generado"])
+                            break
+        except Exception as e:
+            st.warning(f"⚠️ No se pudo guardar copia del Excel en carpeta local: {e}")
         
         return True
     except Exception as e:
@@ -539,6 +649,7 @@ with st.form("form_contratos", clear_on_submit=False):
             for sub in ["CEDULAS","ANEXOS","SOPORTES FISICOS"]:
                 (base/sub).mkdir(parents=True, exist_ok=True)
 
+            # === GUARDADO LOCAL (CÓDIGO ORIGINAL) ===
             if uploaded_file:
                 with open(base / "SOPORTES FISICOS" / uploaded_file.name, "wb") as f:
                     f.write(uploaded_file.getbuffer())
@@ -549,11 +660,28 @@ with st.form("form_contratos", clear_on_submit=False):
             with open(base/"metadatos.json","w",encoding="utf-8") as f:
                 json.dump(d, f, ensure_ascii=False, indent=2)
 
-            mensaje_guardado = f"✅ Contrato guardado en: {base}"
+            mensaje_guardado = f"✅ **Contrato guardado LOCALMENTE en:** `{base}`"
             if palabras_clave:
-                mensaje_guardado += f"\n🔑 Palabras clave extraídas: {', '.join(palabras_clave)}"
+                mensaje_guardado += f"\n🔑 **Palabras clave extraídas:** {', '.join(palabras_clave)}"
             
             st.success(mensaje_guardado)
+
+            # === GUARDADO AUTOMÁTICO EN POSTGRESQL ===
+            with st.spinner("🔄 Guardando en PostgreSQL..."):
+                archivos_data = preparar_archivos_para_postgresql(base, uploaded_file, d)
+                
+                if archivos_data:
+                    exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
+                    
+                    if exito_postgresql:
+                        st.balloons()
+                        st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN AMBOS SISTEMAS!**")
+                        st.info("📁 **Local:** Disponible en tu carpeta personal")
+                        st.info("🗄️ **PostgreSQL:** Disponible en la base de datos (hasta 4TB por archivo)")
+                    else:
+                        st.warning("⚠️ El contrato se guardó localmente, pero hubo problemas con PostgreSQL")
+                else:
+                    st.warning("⚠️ No se pudieron preparar los archivos para PostgreSQL")
 
     # ========= GENERAR EXCEL DENTRO DEL FORM =========
     if generar_excel_btn:
@@ -593,3 +721,4 @@ if st.session_state.get("excel_generado"):
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
+    

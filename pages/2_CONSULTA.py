@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import base64
 import json 
+import os
+from core.database import get_db_manager  # Importar el nuevo manager
 
 # --- Configuración de rutas ---
 BASE_DIR = Path("data")
@@ -29,7 +31,7 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 usuario = st.session_state.get("nombre", "").upper()
 
 # ==============================
-#  ESTILOS IGUALES AL LOGIN
+#  ESTILOS IGUALES AL LOGIN (MANTENIENDO DISEÑO ORIGINAL)
 # ==============================
 st.markdown(f"""
 <style>
@@ -188,22 +190,101 @@ div.stButton > button:first-child:hover {{
 """, unsafe_allow_html=True)
 
 # ==================================================
-#  FUNCIONES AUXILIARES
+#  FUNCIONES AUXILIARES - MANTENIENDO LAS ORIGINALES
 # ==================================================
 def crear_enlace_descarga(archivo_path):
     """Crea un enlace temporal para descargar el archivo"""
     try:
         with open(archivo_path, "rb") as f:
             datos = f.read()
-        # Codificar en base64 para el enlace de datos
         b64 = base64.b64encode(datos).decode()
         href = f'<a href="data:application/octet-stream;base64,{b64}" download="{archivo_path.name}" class="boton-descarga">📥 Descargar</a>'
         return href
     except Exception as e:
         return f'<button class="boton-descarga" disabled>❌ Error</button>'
 
+def crear_enlace_descarga_postgresql(archivo_data):
+    """Crea enlace de descarga para archivos de PostgreSQL"""
+    try:
+        b64 = base64.b64encode(archivo_data['contenido']).decode()
+        href = f'<a href="data:application/octet-stream;base64,{b64}" download="{archivo_data["nombre_archivo"]}" class="boton-descarga">📥 Descargar {archivo_data["nombre_archivo"]}</a>'
+        return href
+    except Exception as e:
+        return f'<button class="boton-descarga" disabled>❌ Error al cargar</button>'
+
+def mostrar_contrato_postgresql(manager, contrato_id):
+    """✅ FUNCIÓN MEJORADA: Mostrar TODOS los archivos del contrato desde PostgreSQL"""
+    try:
+        # Obtener información del contrato
+        contratos = manager.buscar_contratos_pemex({})
+        contrato_info = None
+        for c in contratos:
+            if c['id'] == contrato_id:
+                contrato_info = c
+                break
+        
+        if not contrato_info:
+            st.error("❌ Contrato no encontrado")
+            return
+        
+        # Obtener archivo principal del contrato
+        archivo_data = manager.obtener_contrato_por_id(contrato_id)
+        
+        if not archivo_data:
+            st.error("❌ No se encontraron archivos para este contrato")
+            return
+        
+        # Mostrar información del contrato
+        st.markdown("**📋 Información del contrato:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"- **Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
+            st.write(f"- **Contratista:** {contrato_info.get('contratista', 'No especificado')}")
+            st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
+        with col2:
+            st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
+            st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
+            st.write(f"- **Tamaño archivo:** {archivo_data['metadata']['tamaño_bytes'] / 1024 / 1024:.2f} MB")
+        
+        # Mostrar archivo principal
+        st.markdown("---")
+        st.markdown("### 📎 Archivo del Contrato")
+        
+        metadata = archivo_data['metadata']
+        size_mb = metadata['tamaño_bytes'] / 1024 / 1024
+        
+        st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{metadata['nombre_archivo']}**")
+            st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+            st.markdown(f"*Tipo: {metadata.get('tipo_archivo', 'No especificado')}*")
+        
+        with col2:
+            # Botón de descarga
+            st.download_button(
+                label="📥 Descargar",
+                data=archivo_data['contenido'],
+                file_name=metadata['nombre_archivo'],
+                mime="application/octet-stream",
+                key=f"download_{contrato_id}"
+            )
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Mostrar anexos si existen
+        anexos = contrato_info.get('anexos', [])
+        if anexos:
+            st.markdown("#### 📋 Anexos Detectados")
+            for anexo in anexos:
+                st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.error(f"❌ Error mostrando contrato: {str(e)}")
+
 # ==================================================
-#  INTERFAZ PRINCIPAL DENTRO DEL FORMULARIO
+#  INTERFAZ PRINCIPAL - MANTENIENDO DISEÑO ORIGINAL
 # ==================================================
 with st.form("form_consulta", clear_on_submit=False):
     
@@ -219,6 +300,17 @@ with st.form("form_consulta", clear_on_submit=False):
     # Información del usuario
     st.markdown(f"<div class='usuario-info'>👤 Usuario: {usuario}</div>", unsafe_allow_html=True)
 
+    # --- Selección de modo de consulta ---
+    st.markdown("---")
+    st.markdown("### 🔍 Modo de Consulta")
+    
+    modo_consulta = st.radio(
+        "Selecciona el origen de datos:",
+        ["📂 Sistema de Archivos Local", "🗄️ Base de Datos PostgreSQL"],
+        horizontal=True,
+        key="modo_consulta"
+    )
+
     # --- Buscador ---
     st.markdown("---")
     st.markdown("### 🔍 Búsqueda de Contratos")
@@ -229,96 +321,188 @@ with st.form("form_consulta", clear_on_submit=False):
         key="busqueda_contratos"
     ).strip().upper()
 
-    # --- Lista de contratos del usuario ---
-    user_dir = BASE_DIR / usuario / "CONTRATOS"
-    
-    if not user_dir.exists():
-        st.warning("📂 No se encontraron contratos en tu directorio personal.")
-        st.info("💡 Ve a la página de procesamiento para crear tu primer contrato.")
-        st.form_submit_button("🔄 ACTUALIZAR", use_container_width=True)
-        st.stop()
-
-    contratos = sorted([d for d in user_dir.iterdir() if d.is_dir() and d.name.startswith("CONTRATO_")])
-
-    # --- Filtrado de contratos ---
-    if busqueda:
-        # Si el usuario ingresó solo dígitos, buscar por número dentro del nombre
-        if re.fullmatch(r"\d+", busqueda):
-            contratos_filtrados = [c for c in contratos if busqueda in c.name]
+    # ==================================================
+    #  MODO BASE DE DATOS POSTGRESQL
+    # ==================================================
+    if modo_consulta == "🗄️ Base de Datos PostgreSQL":
+        manager = get_db_manager()
+        if not manager:
+            st.error("❌ No se pudo conectar a la base de datos PostgreSQL")
+            st.info("💡 Verifica que DATABASE_URL esté configurada")
+            
+            # BOTÓN DE SUBMIT REQUERIDO
+            submit_btn = st.form_submit_button("🔄 REINTENTAR CONEXIÓN", use_container_width=True)
+            if submit_btn:
+                st.rerun()
         else:
-            contratos_filtrados = [c for c in contratos if busqueda in c.name.upper()]
-    else:
-        contratos_filtrados = contratos
+            try:
+                # Buscar contratos en PostgreSQL
+                filtros = {}
+                if busqueda:
+                    if re.fullmatch(r"\d+", busqueda):
+                        filtros['numero_contrato'] = busqueda
+                    else:
+                        filtros['contratista'] = busqueda
 
-    if not contratos_filtrados:
-        st.warning("❌ No se encontraron contratos que coincidan con la búsqueda.")
-        st.form_submit_button("🔄 ACTUALIZAR BÚSQUEDA", use_container_width=True)
-        st.stop()
-
-    # --- Selección de contrato ---
-    st.markdown("---")
-    st.markdown("### 📂 Contratos Encontrados")
-    
-    if len(contratos_filtrados) > 1:
-        seleccion = st.selectbox(
-            "Selecciona un contrato para ver sus archivos:",
-            contratos_filtrados,
-            format_func=lambda p: p.name.replace("CONTRATO_", ""),
-            key="select_contrato"
-        )
-    else:
-        seleccion = contratos_filtrados[0]
-        st.info(f"📄 Contrato encontrado: {seleccion.name.replace('CONTRATO_', '')}")
-
-    # --- Mostrar información del contrato seleccionado ---
-    st.markdown(f"<div class='carpeta-header'>📁 CONTRATO: {seleccion.name.replace('CONTRATO_', '')}</div>", unsafe_allow_html=True)
-    
-    # Leer metadatos si existen
-    meta_path = seleccion / "metadatos.json"
-    if meta_path.exists():
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-            
-            st.markdown("**📋 Información del contrato:**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"- **Número:** {meta.get('contrato', 'No especificado')}")
-                st.write(f"- **Contratista:** {meta.get('contratista', 'No especificado')}")
-                st.write(f"- **Área:** {meta.get('area', 'No especificado')}")
-            with col2:
-                st.write(f"- **Monto:** {meta.get('monto', 'No especificado')}")
-                st.write(f"- **Plazo:** {meta.get('plazo', 'No especificado')} días")
-                st.write(f"- **Anexos:** {len(meta.get('anexos', []))}")
-            
-            if meta.get('objeto'):
-                st.markdown(f"**📝 Objeto del contrato:** {meta.get('objeto', '')}")
+                contratos_db = manager.buscar_contratos_pemex(filtros)
                 
-        except Exception as e:
-            st.warning("⚠️ No se pudieron leer los metadatos del contrato.")
+                if not contratos_db:
+                    st.warning("❌ No se encontraron contratos en la base de datos que coincidan con la búsqueda.")
+                    # BOTÓN DE SUBMIT REQUERIDO
+                    submit_btn = st.form_submit_button("🔄 ACTUALIZAR BÚSQUEDA", use_container_width=True)
+                    if submit_btn:
+                        st.rerun()
+                else:
+                    # --- Selección de contrato ---
+                    st.markdown("---")
+                    st.markdown("### 📂 Contratos Encontrados (PostgreSQL)")
+                    
+                    if len(contratos_db) > 1:
+                        seleccion_db = st.selectbox(
+                            "Selecciona un contrato para ver sus archivos:",
+                            contratos_db,
+                            format_func=lambda c: f"{c['numero_contrato']} - {c['contratista']}",
+                            key="select_contrato_db"
+                        )
+                        contrato_id = seleccion_db['id']
+                    else:
+                        seleccion_db = contratos_db[0]
+                        contrato_id = seleccion_db['id']
+                        st.info(f"📄 Contrato encontrado: {seleccion_db['numero_contrato']} - {seleccion_db['contratista']}")
 
-    # --- Mostrar carpetas internas y archivos ---
-    st.markdown("---")
-    st.markdown("### 📎 Archivos del Contrato")
-    
-    secciones = [
-        ("📋 CÉDULA", "CEDULAS"),
-        ("📎 ANEXOS", "ANEXOS"), 
-        ("📂 SOPORTES", "SOPORTES FISICOS")
-    ]
-    
-    archivos_encontrados = False
-    
-    for icono, subfolder in secciones:
-        carpeta_path = seleccion / subfolder
-        if carpeta_path.exists():
-            archivos = sorted(carpeta_path.glob("*"))
-            if archivos:
-                archivos_encontrados = True
-                st.markdown(f"#### {icono} {subfolder}")
+                    # Mostrar información del contrato seleccionado
+                    st.markdown(f"<div class='carpeta-header'>📁 CONTRATO: {seleccion_db['numero_contrato']}</div>", unsafe_allow_html=True)
+                    
+                    # Mostrar contrato completo desde PostgreSQL
+                    mostrar_contrato_postgresql(manager, contrato_id)
+
+            except Exception as e:
+                st.error(f"❌ Error consultando base de datos: {str(e)}")
+                # BOTÓN DE SUBMIT REQUERIDO
+                submit_btn = st.form_submit_button("🔄 REINTENTAR", use_container_width=True)
+                if submit_btn:
+                    st.rerun()
+
+    # ==================================================
+    #  MODO SISTEMA DE ARCHIVOS LOCAL (ORIGINAL)
+    # ==================================================
+    else:
+        # --- Lista de contratos del usuario ---
+        user_dir = BASE_DIR / usuario / "CONTRATOS"
+        
+        if not user_dir.exists():
+            st.warning("📂 No se encontraron contratos en tu directorio personal.")
+            st.info("💡 Ve a la página de procesamiento para crear tu primer contrato.")
+            # BOTÓN DE SUBMIT REQUERIDO
+            submit_btn = st.form_submit_button("🔄 ACTUALIZAR", use_container_width=True)
+            if submit_btn:
+                st.rerun()
+        else:
+            contratos = sorted([d for d in user_dir.iterdir() if d.is_dir() and d.name.startswith("CONTRATO_")])
+
+            # --- Filtrado de contratos ---
+            if busqueda:
+                if re.fullmatch(r"\d+", busqueda):
+                    contratos_filtrados = [c for c in contratos if busqueda in c.name]
+                else:
+                    contratos_filtrados = [c for c in contratos if busqueda in c.name.upper()]
+            else:
+                contratos_filtrados = contratos
+
+            if not contratos_filtrados:
+                st.warning("❌ No se encontraron contratos que coincidan con la búsqueda.")
+                # BOTÓN DE SUBMIT REQUERIDO
+                submit_btn = st.form_submit_button("🔄 ACTUALIZAR BÚSQUEDA", use_container_width=True)
+                if submit_btn:
+                    st.rerun()
+            else:
+                # --- Selección de contrato ---
+                st.markdown("---")
+                st.markdown("### 📂 Contratos Encontrados (Sistema de Archivos)")
                 
-                for archivo in archivos:
-                    if archivo.is_file():
+                if len(contratos_filtrados) > 1:
+                    seleccion = st.selectbox(
+                        "Selecciona un contrato para ver sus archivos:",
+                        contratos_filtrados,
+                        format_func=lambda p: p.name.replace("CONTRATO_", ""),
+                        key="select_contrato"
+                    )
+                else:
+                    seleccion = contratos_filtrados[0]
+                    st.info(f"📄 Contrato encontrado: {seleccion.name.replace('CONTRATO_', '')}")
+
+                # --- Mostrar información del contrato seleccionado ---
+                st.markdown(f"<div class='carpeta-header'>📁 CONTRATO: {seleccion.name.replace('CONTRATO_', '')}</div>", unsafe_allow_html=True)
+                
+                # Leer metadatos si existen
+                meta_path = seleccion / "metadatos.json"
+                if meta_path.exists():
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as f:
+                            meta = json.load(f)
+                        
+                        st.markdown("**📋 Información del contrato:**")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"- **Número:** {meta.get('contrato', 'No especificado')}")
+                            st.write(f"- **Contratista:** {meta.get('contratista', 'No especificado')}")
+                            st.write(f"- **Área:** {meta.get('area', 'No especificado')}")
+                        with col2:
+                            st.write(f"- **Monto:** {meta.get('monto', 'No especificado')}")
+                            st.write(f"- **Plazo:** {meta.get('plazo', 'No especificado')} días")
+                            st.write(f"- **Anexos:** {len(meta.get('anexos', []))}")
+                        
+                        if meta.get('objeto'):
+                            st.markdown(f"**📝 Objeto del contrato:** {meta.get('objeto', '')}")
+                            
+                    except Exception as e:
+                        st.warning("⚠️ No se pudieron leer los metadatos del contrato.")
+
+                # --- Mostrar carpetas internas y archivos ---
+                st.markdown("---")
+                st.markdown("### 📎 Archivos del Contrato")
+                
+                secciones = [
+                    ("📋 CÉDULA", "CEDULAS"),
+                    ("📎 ANEXOS", "ANEXOS"), 
+                    ("📂 SOPORTES", "SOPORTES FISICOS")
+                ]
+                
+                archivos_encontrados = False
+                
+                for icono, subfolder in secciones:
+                    carpeta_path = seleccion / subfolder
+                    if carpeta_path.exists():
+                        archivos = sorted(carpeta_path.glob("*"))
+                        if archivos:
+                            archivos_encontrados = True
+                            st.markdown(f"#### {icono} {subfolder}")
+                            
+                            for archivo in archivos:
+                                if archivo.is_file():
+                                    size_kb = round(archivo.stat().st_size / 1024, 2)
+                                    
+                                    st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
+                                    
+                                    col1, col2 = st.columns([3, 1])
+                                    with col1:
+                                        st.markdown(f"**{archivo.name}**")
+                                        st.markdown(f"*Tamaño: {size_kb} KB*")
+                                    
+                                    with col2:
+                                        # Crear enlace de descarga
+                                        enlace_descarga = crear_enlace_descarga(archivo)
+                                        st.markdown(enlace_descarga, unsafe_allow_html=True)
+                                    
+                                    st.markdown("</div>", unsafe_allow_html=True)
+
+                # Mostrar archivos en la raíz del contrato
+                archivos_raiz = [f for f in seleccion.iterdir() if f.is_file()]
+                if archivos_raiz:
+                    archivos_encontrados = True
+                    st.markdown("#### 📄 Archivos Principales")
+                    
+                    for archivo in archivos_raiz:
                         size_kb = round(archivo.stat().st_size / 1024, 2)
                         
                         st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
@@ -329,39 +513,15 @@ with st.form("form_consulta", clear_on_submit=False):
                             st.markdown(f"*Tamaño: {size_kb} KB*")
                         
                         with col2:
-                            # Crear enlace de descarga
                             enlace_descarga = crear_enlace_descarga(archivo)
                             st.markdown(enlace_descarga, unsafe_allow_html=True)
                         
                         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Mostrar archivos en la raíz del contrato
-    archivos_raiz = [f for f in seleccion.iterdir() if f.is_file()]
-    if archivos_raiz:
-        archivos_encontrados = True
-        st.markdown("#### 📄 Archivos Principales")
-        
-        for archivo in archivos_raiz:
-            size_kb = round(archivo.stat().st_size / 1024, 2)
-            
-            st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown(f"**{archivo.name}**")
-                st.markdown(f"*Tamaño: {size_kb} KB*")
-            
-            with col2:
-                # Crear enlace de descarga
-                enlace_descarga = crear_enlace_descarga(archivo)
-                st.markdown(enlace_descarga, unsafe_allow_html=True)
-            
-            st.markdown("</div>", unsafe_allow_html=True)
+                if not archivos_encontrados:
+                    st.info("ℹ️ No se encontraron archivos en este contrato.")
 
-    if not archivos_encontrados:
-        st.info("ℹ️ No se encontraron archivos en este contrato.")
-
-    # --- Botones de acción ---
+    # --- BOTÓN DE SUBMIT PRINCIPAL ---
     st.markdown("---")
     col1, col2 = st.columns(2)
     
@@ -371,7 +531,10 @@ with st.form("form_consulta", clear_on_submit=False):
     with col2:
         nueva_busqueda = st.form_submit_button("🔍 NUEVA BÚSQUEDA", use_container_width=True)
     
-    if actualizar or nueva_busqueda:
+    # Asegurarnos de que siempre hay un botón de submit activo
+    if not any([actualizar, nueva_busqueda]):
+        st.form_submit_button("🔄 ACTUALIZAR", use_container_width=True, key="default_submit")
+    elif actualizar or nueva_busqueda:
         st.rerun()
 
 # --- Mensaje informativo al final ---
@@ -379,7 +542,8 @@ st.markdown(
     """
     <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
         <strong>💡 Información:</strong><br>
-        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.
+        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
+        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
     </div>
     """,
     unsafe_allow_html=True
