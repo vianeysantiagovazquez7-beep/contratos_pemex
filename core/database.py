@@ -135,6 +135,38 @@ class ContratosManager:
             raise Exception(f"❌ Error guardando contrato: {str(e)}")
         finally:
             conn.close()
+
+    def guardar_contrato_completo(self, archivos_data, datos_contrato, usuario="sistema"):
+        """
+        Guardar contrato completo con todos los archivos (principal, anexos, cédulas, soportes)
+        Versión compatible con el código existente.
+        """
+        try:
+            # Usar el archivo principal para guardar en la base de datos
+            archivo_principal = archivos_data['principal']
+            
+            # Guardar usando el método existente
+            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_contrato, usuario)
+            
+            if contrato_id:
+                st.success(f"🗄️ **Contrato guardado en PostgreSQL** (ID: {contrato_id})")
+                
+                # Log opcional de archivos adicionales
+                anexos_count = len(archivos_data.get('anexos', []))
+                cedulas_count = len(archivos_data.get('cedulas', []))
+                soportes_count = len(archivos_data.get('soportes', []))
+                
+                if anexos_count > 0:
+                    st.info(f"📎 {anexos_count} anexos registrados")
+                if cedulas_count > 0:
+                    st.info(f"📊 {cedulas_count} cédulas asociadas")
+                if soportes_count > 0:
+                    st.info(f"📄 {soportes_count} soportes incluidos")
+            
+            return contrato_id
+            
+        except Exception as e:
+            raise Exception(f"Error guardando contrato completo: {str(e)}")
     
     def buscar_contratos_pemex(self, filtros=None):
         """Búsqueda avanzada para PEMEX"""
