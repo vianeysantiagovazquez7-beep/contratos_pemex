@@ -74,6 +74,22 @@ class ContratosManager:
     
     def calcular_hash(self, file_bytes):
         return hashlib.sha256(file_bytes).hexdigest()
+
+    def _sanitizar_datos(self, datos):
+        """Convierte todos los valores a strings para evitar errores de tipo"""
+        datos_sanitizados = {}
+        for key, value in datos.items():
+            if value is None:
+                datos_sanitizados[key] = ""
+            elif isinstance(value, bool):
+                datos_sanitizados[key] = "Sí" if value else "No"
+            elif isinstance(value, (int, float)):
+                datos_sanitizados[key] = str(value)
+            elif isinstance(value, list):
+                datos_sanitizados[key] = value  # Los manejaremos con json.dumps después
+            else:
+                datos_sanitizados[key] = str(value)
+        return datos_sanitizados
     
     def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
         """
@@ -81,6 +97,9 @@ class ContratosManager:
         """
         conn = self._get_connection()
         try:
+            # Sanitizar datos para asegurar tipos correctos
+            datos_sanitizados = self._sanitizar_datos(datos_extraidos)
+            
             file_bytes = archivo.getvalue()
             file_hash = self.calcular_hash(file_bytes)
             
@@ -108,13 +127,21 @@ class ContratosManager:
                 RETURNING id
             """)
             
+            # Asegurar que todos los valores sean strings o None
+            contrato = datos_sanitizados.get('contrato', '')
+            contratista = datos_sanitizados.get('contratista', '')
+            monto = datos_sanitizados.get('monto', '')
+            plazo = datos_sanitizados.get('plazo', '')
+            objeto = datos_sanitizados.get('objeto', '')
+            anexos = json.dumps(datos_sanitizados.get('anexos', []))
+            
             cur.execute(query, (
-                datos_extraidos.get('contrato', ''),
-                datos_extraidos.get('contratista', ''),
-                datos_extraidos.get('monto', ''),
-                datos_extraidos.get('plazo', ''),
-                datos_extraidos.get('objeto', ''),
-                json.dumps(datos_extraidos.get('anexos', [])),  # Guardar anexos como JSON
+                contrato,
+                contratista,
+                monto,
+                plazo,
+                objeto,
+                anexos,
                 lo_oid.oid,
                 archivo.name,
                 getattr(archivo, 'type', 'application/pdf'),
@@ -136,18 +163,20 @@ class ContratosManager:
         finally:
             conn.close()
 
-    # === MÉTODO NUEVO AGREGADO ===
     def guardar_contrato_completo(self, archivos_data, datos_contrato, usuario="sistema"):
         """
         Guardar contrato completo con todos los archivos (principal, anexos, cédulas, soportes)
         Versión compatible con el código existente.
         """
         try:
+            # Sanitizar datos primero
+            datos_sanitizados = self._sanitizar_datos(datos_contrato)
+            
             # Usar el archivo principal para guardar en la base de datos
             archivo_principal = archivos_data['principal']
             
             # Guardar usando el método existente
-            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_contrato, usuario)
+            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_sanitizados, usuario)
             
             if contrato_id:
                 st.success(f"🗄️ **Contrato guardado en PostgreSQL** (ID: {contrato_id})")
@@ -168,7 +197,6 @@ class ContratosManager:
             
         except Exception as e:
             raise Exception(f"Error guardando contrato completo: {str(e)}")
-    # === FIN DEL MÉTODO NUEVO ===
     
     def buscar_contratos_pemex(self, filtros=None):
         """Búsqueda avanzada para PEMEX"""
