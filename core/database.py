@@ -136,6 +136,7 @@ class ContratosManager:
         finally:
             conn.close()
 
+    # === MÉTODO NUEVO AGREGADO ===
     def guardar_contrato_completo(self, archivos_data, datos_contrato, usuario="sistema"):
         """
         Guardar contrato completo con todos los archivos (principal, anexos, cédulas, soportes)
@@ -167,6 +168,7 @@ class ContratosManager:
             
         except Exception as e:
             raise Exception(f"Error guardando contrato completo: {str(e)}")
+    # === FIN DEL MÉTODO NUEVO ===
     
     def buscar_contratos_pemex(self, filtros=None):
         """Búsqueda avanzada para PEMEX"""
