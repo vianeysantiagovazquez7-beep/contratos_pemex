@@ -7,6 +7,7 @@ from datetime import datetime
 import io
 import streamlit as st
 import json
+import os  
 
 class ContratosManager:
     def __init__(self, connection_string):
@@ -310,16 +311,20 @@ class ContratosManager:
         finally:
             conn.close()
 
-# Función para obtener el manager - CORREGIDA
+# Función para obtener el manager - VERSIÓN SIMPLIFICADA
 @st.cache_resource
 def get_db_manager():
-    connection_string = st.secrets.get("DATABASE_URL", "")
-    if not connection_string:  # CORREGIDO: "no" -> "not"
-        st.warning("⚠️ DATABASE_URL no configurada - Modo sin base de datos")
-        return None
+    # VALOR DIRECTO - sin depender de variables de entorno
+    connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
     
-    manager = ContratosManager(connection_string)
-    if manager.init_db():
-        st.success("✅ Conectado a PostgreSQL correctamente")
-    return manager
-
+    try:
+        manager = ContratosManager(connection_string)
+        if manager.init_db():
+            st.success("✅ Conectado a PostgreSQL en Render")
+            return manager
+        else:
+            st.warning("⚠️ No se pudo inicializar la base de datos")
+            return None
+    except Exception as e:
+        st.warning(f"⚠️ Error conectando a PostgreSQL: {str(e)}")
+        return None
