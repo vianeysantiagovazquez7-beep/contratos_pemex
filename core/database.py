@@ -8,6 +8,8 @@ import io
 import streamlit as st
 import json
 import os  
+import uuid
+import traceback
 
 class ContratosManager:
     def __init__(self, connection_string):
@@ -91,6 +93,40 @@ class ContratosManager:
         else:
             return str(value)
     
+    def _guardar_localmente(self, archivos_data, datos_contrato):
+        """Guardar contrato localmente como respaldo"""
+        # Crear directorio de respaldo si no existe
+        backup_dir = "backup_contratos"
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # Generar nombre único
+        backup_id = str(uuid.uuid4())[:8]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"contrato_backup_{timestamp}_{backup_id}.json"
+        filepath = os.path.join(backup_dir, filename)
+        
+        # Preparar datos para backup (convertir a tipos serializables)
+        backup_data = {
+            'metadata': {},
+            'timestamp': timestamp,
+            'backup_id': backup_id,
+            'archivos': {
+                'principal': archivos_data['principal'].name if archivos_data.get('principal') else None,
+                'anexos_count': len(archivos_data.get('anexos', [])),
+                'cedulas_count': len(archivos_data.get('cedulas', [])),
+                'soportes_count': len(archivos_data.get('soportes', []))
+            }
+        }
+        
+        # Convertir todos los valores a string para el backup
+        for key, value in datos_contrato.items():
+            backup_data['metadata'][key] = self._safe_string(value)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(backup_data, f, ensure_ascii=False, indent=2)
+        
+        return filepath
+
     def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
         """
         Guardar contrato con TODOS los datos PEMEX extraídos
@@ -112,7 +148,30 @@ class ContratosManager:
                         break
                     lo_oid.write(chunk)
             
-            # Guardar TODOS los metadatos PEMEX
+            # CONVERSIÓN 100% SEGURA DE TODOS LOS CAMPOS
+            contrato = self._safe_string(datos_extraidos.get('contrato', ''))
+            contratista = self._safe_string(datos_extraidos.get('contratista', ''))
+            monto = self._safe_string(datos_extraidos.get('monto', ''))
+            plazo = self._safe_string(datos_extraidos.get('plazo', ''))
+            objeto = self._safe_string(datos_extraidos.get('objeto', ''))
+            anexos = json.dumps(datos_extraidos.get('anexos', []), ensure_ascii=False)
+            
+            # DEBUG DETALLADO: Mostrar en logs de Render
+            print("🔍 DEBUG DETALLADO - Valores a insertar en PostgreSQL:")
+            print(f"  contrato: {repr(contrato)} (tipo: {type(contrato).__name__})")
+            print(f"  contratista: {repr(contratista)} (tipo: {type(contratista).__name__})")
+            print(f"  monto: {repr(monto)} (tipo: {type(monto).__name__})")
+            print(f"  plazo: {repr(plazo)} (tipo: {type(plazo).__name__})")
+            print(f"  objeto: {repr(objeto)} (tipo: {type(objeto).__name__})")
+            
+            # VERIFICACIÓN FINAL DE SEGURIDAD - asegurar que plazo es string
+            if not isinstance(plazo, str):
+                print(f"🚨 ¡CRÍTICO! plazo NO es string: {repr(plazo)} (tipo: {type(plazo).__name__})")
+                # Forzar conversión
+                plazo = str(plazo)
+                print(f"🚨 plazo convertido forzadamente: {repr(plazo)} (tipo: {type(plazo).__name__})")
+            
+            # Guardar en PostgreSQL
             cur = conn.cursor()
             
             query = sql.SQL("""
@@ -124,27 +183,11 @@ class ContratosManager:
                 RETURNING id
             """)
             
-            # CONVERSIÓN 100% SEGURA DE TODOS LOS CAMPOS
-            contrato = self._safe_string(datos_extraidos.get('contrato', ''))
-            contratista = self._safe_string(datos_extraidos.get('contratista', ''))
-            monto = self._safe_string(datos_extraidos.get('monto', ''))
-            plazo = self._safe_string(datos_extraidos.get('plazo', ''))  # ¡PROBLEMA RESUELTO!
-            objeto = self._safe_string(datos_extraidos.get('objeto', ''))
-            anexos = json.dumps(datos_extraidos.get('anexos', []), ensure_ascii=False)
-            
-            # DEBUG: Mostrar en logs de Render
-            print("🔍 DEBUG - Valores a insertar en PostgreSQL:")
-            print(f"  contrato: {contrato} (tipo: {type(contrato).__name__})")
-            print(f"  contratista: {contratista} (tipo: {type(contratista).__name__})")
-            print(f"  monto: {monto} (tipo: {type(monto).__name__})")
-            print(f"  plazo: {plazo} (tipo: {type(plazo).__name__})")
-            print(f"  objeto: {objeto} (tipo: {type(objeto).__name__})")
-            
             cur.execute(query, (
                 contrato,
                 contratista,
                 monto,
-                plazo,  # Ahora SIEMPRE es string
+                plazo,  # ¡Ahora 100% garantizado que es string!
                 objeto,
                 anexos,
                 lo_oid.oid,
@@ -157,6 +200,8 @@ class ContratosManager:
             
             contrato_id = cur.fetchone()[0]
             conn.commit()
+            
+            print(f"✅ CONTRATO GUARDADO EXITOSAMENTE EN POSTGRESQL - ID: {contrato_id}")
             return contrato_id
             
         except psycopg2.IntegrityError:
@@ -164,6 +209,10 @@ class ContratosManager:
             raise Exception("❌ Ya existe un contrato con ese número")
         except Exception as e:
             conn.rollback()
+            print(f"🔴 ERROR DETALLADO en guardar_contrato_pemex:")
+            print(f"   Tipo de error: {type(e).__name__}")
+            print(f"   Mensaje: {str(e)}")
+            print(f"   Traceback: {traceback.format_exc()}")
             raise Exception(f"❌ Error guardando contrato: {str(e)}")
         finally:
             conn.close()
@@ -173,10 +222,30 @@ class ContratosManager:
         Guardar contrato completo con todos los archivos (principal, anexos, cédulas, soportes)
         """
         try:
+            # DEBUG DETALLADO ANTES de cualquier procesamiento
+            print("🔍 DEBUG - VALORES ORIGINALES DE datos_contrato:")
+            for key, value in datos_contrato.items():
+                print(f"  {key}: {repr(value)} (tipo: {type(value).__name__})")
+            
             # VERIFICACIÓN EXTRA: Asegurar que todos los campos sean strings
             datos_limpios = {}
             for key, value in datos_contrato.items():
-                datos_limpios[key] = self._safe_string(value)
+                valor_original = value
+                valor_convertido = self._safe_string(value)
+                datos_limpios[key] = valor_convertido
+                
+                # Debug específico para plazo
+                if key == 'plazo':
+                    print(f"🚨 DEBUG ESPECÍFICO PLAZO:")
+                    print(f"   Valor original: {repr(valor_original)}")
+                    print(f"   Tipo original: {type(valor_original).__name__}")
+                    print(f"   Valor convertido: {repr(valor_convertido)}")
+                    print(f"   Tipo convertido: {type(valor_convertido).__name__}")
+            
+            # Debug final de datos limpios
+            print("🔍 DEBUG - VALORES LIMPIOS (después de _safe_string):")
+            for key, value in datos_limpios.items():
+                print(f"  {key}: {repr(value)} (tipo: {type(value).__name__})")
             
             # Usar el archivo principal para guardar en la base de datos
             archivo_principal = archivos_data['principal']
@@ -202,6 +271,21 @@ class ContratosManager:
             return contrato_id
             
         except Exception as e:
+            st.error(f"❌ Error guardando en PostgreSQL: {str(e)}")
+            
+            # Debug adicional del error
+            error_details = traceback.format_exc()
+            print(f"🔴 ERROR COMPLETO en guardar_contrato_completo:")
+            print(error_details)
+            
+            # Guardar localmente como respaldo
+            try:
+                backup_path = self._guardar_localmente(archivos_data, datos_contrato)
+                st.info(f"📁 El contrato se guardó localmente en: {backup_path}")
+                st.warning("⚠️ El contrato se guardó localmente, pero hubo problemas con PostgreSQL")
+            except Exception as backup_error:
+                st.error(f"🔴 Error incluso guardando localmente: {backup_error}")
+            
             raise Exception(f"Error guardando contrato completo: {str(e)}")
     
     def buscar_contratos_pemex(self, filtros=None):
@@ -396,3 +480,4 @@ def get_db_manager():
     except Exception as e:
         st.warning(f"⚠️ Error conectando a PostgreSQL: {str(e)}")
         return None
+    
