@@ -74,19 +74,6 @@ class ContratosManager:
     
     def calcular_hash(self, file_bytes):
         return hashlib.sha256(file_bytes).hexdigest()
-
-    def _convertir_a_string(self, valor):
-        """Convierte cualquier valor a string de forma segura"""
-        if valor is None:
-            return ""
-        elif isinstance(valor, bool):
-            return "Sí" if valor else "No"
-        elif isinstance(valor, (int, float)):
-            return str(valor)
-        elif isinstance(valor, (list, dict)):
-            return json.dumps(valor, ensure_ascii=False)
-        else:
-            return str(valor)
     
     def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
         """
@@ -121,28 +108,28 @@ class ContratosManager:
                 RETURNING id
             """)
             
-            # CONVERSIÓN AGGRESIVA DE TIPOS - todos a string
-            contrato = self._convertir_a_string(datos_extraidos.get('contrato', ''))
-            contratista = self._convertir_a_string(datos_extraidos.get('contratista', ''))
-            monto = self._convertir_a_string(datos_extraidos.get('monto', ''))
-            plazo = self._convertir_a_string(datos_extraidos.get('plazo', ''))
-            objeto = self._convertir_a_string(datos_extraidos.get('objeto', ''))
-            anexos = self._convertir_a_string(datos_extraidos.get('anexos', []))
+            # CONVERSIÓN DIRECTA Y SEGURA DE TODOS LOS CAMPOS
+            contrato = str(datos_extraidos.get('contrato', '')) if datos_extraidos.get('contrato') is not None else ""
+            contratista = str(datos_extraidos.get('contratista', '')) if datos_extraidos.get('contratista') is not None else ""
+            monto = str(datos_extraidos.get('monto', '')) if datos_extraidos.get('monto') is not None else ""
             
-            # DEBUG: Mostrar los valores que se van a insertar
-            st.info(f"🔍 DEBUG - Valores a insertar:")
-            st.info(f"Contrato: {contrato} (tipo: {type(contrato)})")
-            st.info(f"Contratista: {contratista} (tipo: {type(contratista)})")
-            st.info(f"Monto: {monto} (tipo: {type(monto)})")
-            st.info(f"Plazo: {plazo} (tipo: {type(plazo)})")
-            st.info(f"Objeto: {objeto} (tipo: {type(objeto)})")
-            st.info(f"Anexos: {anexos} (tipo: {type(anexos)})")
+            # CAMPO PLAZO - CONVERSIÓN EXPLÍCITA Y SEGURA
+            plazo_raw = datos_extraidos.get('plazo', '')
+            if plazo_raw is None:
+                plazo = ""
+            elif isinstance(plazo_raw, bool):
+                plazo = "Sí" if plazo_raw else "No"
+            else:
+                plazo = str(plazo_raw)
+            
+            objeto = str(datos_extraidos.get('objeto', '')) if datos_extraidos.get('objeto') is not None else ""
+            anexos = json.dumps(datos_extraidos.get('anexos', []), ensure_ascii=False)
             
             cur.execute(query, (
                 contrato,
                 contratista,
                 monto,
-                plazo,
+                plazo,  # Ahora siempre es string
                 objeto,
                 anexos,
                 lo_oid.oid,
@@ -389,3 +376,4 @@ def get_db_manager():
     except Exception as e:
         st.warning(f"⚠️ Error conectando a PostgreSQL: {str(e)}")
         return None
+    
