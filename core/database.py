@@ -75,21 +75,18 @@ class ContratosManager:
     def calcular_hash(self, file_bytes):
         return hashlib.sha256(file_bytes).hexdigest()
 
-    def _sanitizar_datos(self, datos):
-        """Convierte todos los valores a strings para evitar errores de tipo"""
-        datos_sanitizados = {}
-        for key, value in datos.items():
-            if value is None:
-                datos_sanitizados[key] = ""
-            elif isinstance(value, bool):
-                datos_sanitizados[key] = "Sí" if value else "No"
-            elif isinstance(value, (int, float)):
-                datos_sanitizados[key] = str(value)
-            elif isinstance(value, list):
-                datos_sanitizados[key] = value  # Los manejaremos con json.dumps después
-            else:
-                datos_sanitizados[key] = str(value)
-        return datos_sanitizados
+    def _convertir_a_string(self, valor):
+        """Convierte cualquier valor a string de forma segura"""
+        if valor is None:
+            return ""
+        elif isinstance(valor, bool):
+            return "Sí" if valor else "No"
+        elif isinstance(valor, (int, float)):
+            return str(valor)
+        elif isinstance(valor, (list, dict)):
+            return json.dumps(valor, ensure_ascii=False)
+        else:
+            return str(valor)
     
     def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
         """
@@ -97,9 +94,6 @@ class ContratosManager:
         """
         conn = self._get_connection()
         try:
-            # Sanitizar datos para asegurar tipos correctos
-            datos_sanitizados = self._sanitizar_datos(datos_extraidos)
-            
             file_bytes = archivo.getvalue()
             file_hash = self.calcular_hash(file_bytes)
             
@@ -127,13 +121,22 @@ class ContratosManager:
                 RETURNING id
             """)
             
-            # Asegurar que todos los valores sean strings o None
-            contrato = datos_sanitizados.get('contrato', '')
-            contratista = datos_sanitizados.get('contratista', '')
-            monto = datos_sanitizados.get('monto', '')
-            plazo = datos_sanitizados.get('plazo', '')
-            objeto = datos_sanitizados.get('objeto', '')
-            anexos = json.dumps(datos_sanitizados.get('anexos', []))
+            # CONVERSIÓN AGGRESIVA DE TIPOS - todos a string
+            contrato = self._convertir_a_string(datos_extraidos.get('contrato', ''))
+            contratista = self._convertir_a_string(datos_extraidos.get('contratista', ''))
+            monto = self._convertir_a_string(datos_extraidos.get('monto', ''))
+            plazo = self._convertir_a_string(datos_extraidos.get('plazo', ''))
+            objeto = self._convertir_a_string(datos_extraidos.get('objeto', ''))
+            anexos = self._convertir_a_string(datos_extraidos.get('anexos', []))
+            
+            # DEBUG: Mostrar los valores que se van a insertar
+            st.info(f"🔍 DEBUG - Valores a insertar:")
+            st.info(f"Contrato: {contrato} (tipo: {type(contrato)})")
+            st.info(f"Contratista: {contratista} (tipo: {type(contratista)})")
+            st.info(f"Monto: {monto} (tipo: {type(monto)})")
+            st.info(f"Plazo: {plazo} (tipo: {type(plazo)})")
+            st.info(f"Objeto: {objeto} (tipo: {type(objeto)})")
+            st.info(f"Anexos: {anexos} (tipo: {type(anexos)})")
             
             cur.execute(query, (
                 contrato,
@@ -166,17 +169,13 @@ class ContratosManager:
     def guardar_contrato_completo(self, archivos_data, datos_contrato, usuario="sistema"):
         """
         Guardar contrato completo con todos los archivos (principal, anexos, cédulas, soportes)
-        Versión compatible con el código existente.
         """
         try:
-            # Sanitizar datos primero
-            datos_sanitizados = self._sanitizar_datos(datos_contrato)
-            
             # Usar el archivo principal para guardar en la base de datos
             archivo_principal = archivos_data['principal']
             
             # Guardar usando el método existente
-            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_sanitizados, usuario)
+            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_contrato, usuario)
             
             if contrato_id:
                 st.success(f"🗄️ **Contrato guardado en PostgreSQL** (ID: {contrato_id})")
