@@ -1,11 +1,12 @@
-EOF
+# .streamlit/config.toml - ARCHIVO CORRECTO
 [server]
 headless = true
 address = "0.0.0.0"
-port = 8501
+port = 10000
+enableCORS = false
 
 [browser]
-serverAddress = "localhost"
+serverAddress = "contratos-pemex.onrender.com"
 gatherUsageStats = false
 
 [theme]
@@ -14,4 +15,3 @@ backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f0f2f6"
 textColor = "#262730"
 font = "sans serif"
-EOF

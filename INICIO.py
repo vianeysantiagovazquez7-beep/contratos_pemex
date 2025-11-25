@@ -6,6 +6,7 @@ import warnings
 import base64
 import re
 import io  # Nuevo import
+import os  # Nuevo import para variables de entorno
 from core.database import get_db_manager  # Nuevo import
 
 from core.config import SYSTEM_READY, UPLOAD_DIR, OUTPUT_DIR, TEMPLATE_PATH, timestamp
@@ -16,6 +17,20 @@ from core.ui_config import aplicar_estilo_global
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
 
+# === CONFIGURACIÓN DE SECRET KEY Y SESIÓN PERSISTENTE ===
+if 'SECRET_KEY' not in st.session_state:
+    st.session_state.SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback_key_streamlit_pemex_2025')
+
+# === PERSISTENCIA MEJORADA DE SESIÓN ===
+if 'session_initialized' not in st.session_state:
+    st.session_state.session_initialized = True
+    # Fuerza la persistencia de la autenticación si ya estaba autenticado
+    if 'autenticado' not in st.session_state:
+        st.session_state.autenticado = False
+    if 'usuario' not in st.session_state:
+        st.session_state.usuario = ""
+    if 'nombre' not in st.session_state:
+        st.session_state.nombre = ""
 
 # === CONFIGURACIÓN DE RUTAS ===
 assets_dir = Path(__file__).parent / "assets"
@@ -33,9 +48,13 @@ fondo_base64 = get_base64_image(fondo_path)
 logo_base64 = get_base64_image(logo_path)
 
 # === Página en modo wide ===
-st.set_page_config(layout="wide")
+st.set_page_config(
+    layout="wide",
+    page_title="Sistema de Contratos PEMEX",
+    page_icon="📋"
+)
 
-# === SESSION STATE ===
+# === SESSION STATE MEJORADO ===
 for key, default in {
     "autenticado": False,
     "usuario": "",
@@ -47,7 +66,9 @@ for key, default in {
     "anexos_detectados": [],
     "procesamiento_completado": False,
     "excel_generado": None,
-    "excel_filename": ""
+    "excel_filename": "",
+    "procesando": False,
+    "guardando": False
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -474,6 +495,11 @@ div.stButton > button:first-child:hover {{
     margin: 15px 0;
     text-align: center;
 }}
+
+/* Mejoras para la persistencia de sesión */
+.stApp {{
+    persistence: "memory";
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -551,6 +577,7 @@ with st.form("form_contratos", clear_on_submit=False):
 
     # ========= PROCESAMIENTO DENTRO DEL FORM =========
     if procesar:
+        st.session_state.procesando = True
         if not uploaded_file:
             st.warning("⚠️ Sube un PDF antes de procesar.")
         else:
@@ -593,10 +620,12 @@ with st.form("form_contratos", clear_on_submit=False):
                     st.session_state["procesamiento_completado"] = True
                     
                     st.success("✅ Procesamiento completado exitosamente!")
+                    st.session_state.procesando = False
                     st.rerun()
 
     # ========= GUARDAR DENTRO DEL FORM =========
     if guardar:
+        st.session_state.guardando = True
         if not st.session_state.get("datos_contrato"):
             st.warning("⚠️ No hay datos para guardar.")
         else:
@@ -682,6 +711,8 @@ with st.form("form_contratos", clear_on_submit=False):
                         st.warning("⚠️ El contrato se guardó localmente, pero hubo problemas con PostgreSQL")
                 else:
                     st.warning("⚠️ No se pudieron preparar los archivos para PostgreSQL")
+            
+            st.session_state.guardando = False
 
     # ========= GENERAR EXCEL DENTRO DEL FORM =========
     if generar_excel_btn:
@@ -699,8 +730,8 @@ with st.form("form_contratos", clear_on_submit=False):
             st.subheader("🔍 Texto Extraído por OCR")
             st.text_area(
                 "Texto OCR completo", 
-                texto[:50000] + ("...[texto truncado para visualización]" if len(texto)>50000 else ""), 
-                height=30000,
+                texto[:300000] + ("...[texto truncado para visualización]" if len(texto)>3000000 else ""), 
+                height=300000,
                 key="ocr_text_area"
             )
             st.markdown("</div>", unsafe_allow_html=True)
@@ -721,4 +752,3 @@ if st.session_state.get("excel_generado"):
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
-    
