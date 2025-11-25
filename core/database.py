@@ -74,6 +74,22 @@ class ContratosManager:
     
     def calcular_hash(self, file_bytes):
         return hashlib.sha256(file_bytes).hexdigest()
+
+    def _safe_string(self, value):
+        """Convierte cualquier valor a string de forma 100% segura"""
+        if value is None:
+            return ""
+        elif isinstance(value, bool):
+            return "True" if value else "False"
+        elif isinstance(value, (int, float)):
+            return str(value)
+        elif isinstance(value, (list, dict)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except:
+                return str(value)
+        else:
+            return str(value)
     
     def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
         """
@@ -108,28 +124,27 @@ class ContratosManager:
                 RETURNING id
             """)
             
-            # CONVERSIÓN DIRECTA Y SEGURA DE TODOS LOS CAMPOS
-            contrato = str(datos_extraidos.get('contrato', '')) if datos_extraidos.get('contrato') is not None else ""
-            contratista = str(datos_extraidos.get('contratista', '')) if datos_extraidos.get('contratista') is not None else ""
-            monto = str(datos_extraidos.get('monto', '')) if datos_extraidos.get('monto') is not None else ""
-            
-            # CAMPO PLAZO - CONVERSIÓN EXPLÍCITA Y SEGURA
-            plazo_raw = datos_extraidos.get('plazo', '')
-            if plazo_raw is None:
-                plazo = ""
-            elif isinstance(plazo_raw, bool):
-                plazo = "Sí" if plazo_raw else "No"
-            else:
-                plazo = str(plazo_raw)
-            
-            objeto = str(datos_extraidos.get('objeto', '')) if datos_extraidos.get('objeto') is not None else ""
+            # CONVERSIÓN 100% SEGURA DE TODOS LOS CAMPOS
+            contrato = self._safe_string(datos_extraidos.get('contrato', ''))
+            contratista = self._safe_string(datos_extraidos.get('contratista', ''))
+            monto = self._safe_string(datos_extraidos.get('monto', ''))
+            plazo = self._safe_string(datos_extraidos.get('plazo', ''))  # ¡PROBLEMA RESUELTO!
+            objeto = self._safe_string(datos_extraidos.get('objeto', ''))
             anexos = json.dumps(datos_extraidos.get('anexos', []), ensure_ascii=False)
+            
+            # DEBUG: Mostrar en logs de Render
+            print("🔍 DEBUG - Valores a insertar en PostgreSQL:")
+            print(f"  contrato: {contrato} (tipo: {type(contrato).__name__})")
+            print(f"  contratista: {contratista} (tipo: {type(contratista).__name__})")
+            print(f"  monto: {monto} (tipo: {type(monto).__name__})")
+            print(f"  plazo: {plazo} (tipo: {type(plazo).__name__})")
+            print(f"  objeto: {objeto} (tipo: {type(objeto).__name__})")
             
             cur.execute(query, (
                 contrato,
                 contratista,
                 monto,
-                plazo,  # Ahora siempre es string
+                plazo,  # Ahora SIEMPRE es string
                 objeto,
                 anexos,
                 lo_oid.oid,
@@ -158,11 +173,16 @@ class ContratosManager:
         Guardar contrato completo con todos los archivos (principal, anexos, cédulas, soportes)
         """
         try:
+            # VERIFICACIÓN EXTRA: Asegurar que todos los campos sean strings
+            datos_limpios = {}
+            for key, value in datos_contrato.items():
+                datos_limpios[key] = self._safe_string(value)
+            
             # Usar el archivo principal para guardar en la base de datos
             archivo_principal = archivos_data['principal']
             
             # Guardar usando el método existente
-            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_contrato, usuario)
+            contrato_id = self.guardar_contrato_pemex(archivo_principal, datos_limpios, usuario)
             
             if contrato_id:
                 st.success(f"🗄️ **Contrato guardado en PostgreSQL** (ID: {contrato_id})")
@@ -376,4 +396,3 @@ def get_db_manager():
     except Exception as e:
         st.warning(f"⚠️ Error conectando a PostgreSQL: {str(e)}")
         return None
-    
