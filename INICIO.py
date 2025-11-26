@@ -7,21 +7,22 @@ import base64
 import re
 import io
 import os
-from core.database import get_db_manager  # Import para PostgreSQL
+from core.database import get_db_manager
 
 from core.config import SYSTEM_READY, UPLOAD_DIR, OUTPUT_DIR, TEMPLATE_PATH, timestamp
 from core.ocr_utils import pdf_to_text
 from core.text_processing import extract_contract_data
 from core.excel_utils import load_excel, save_excel
-from core.ui_config import aplicar_estilo_global
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
+# Configurar puerto por defecto si no está definido
+if 'STREAMLIT_SERVER_PORT' not in os.environ:
+    os.environ['STREAMLIT_SERVER_PORT'] = '10000'
 
-# === CONFIGURACIÓN DE SECRET KEY Y SESIÓN PERSISTENTE ===
+# === CONFIGURACIÓN INICIAL ===
 if 'SECRET_KEY' not in st.session_state:
     st.session_state.SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback_key_streamlit_pemex_2025')
 
-# === PERSISTENCIA MEJORADA DE SESIÓN ===
 if 'session_initialized' not in st.session_state:
     st.session_state.session_initialized = True
     if 'autenticado' not in st.session_state:
@@ -53,21 +54,11 @@ st.set_page_config(
     page_icon="📋"
 )
 
-# === SESSION STATE MEJORADO ===
+# === SESSION STATE ===
 for key, default in {
-    "autenticado": False,
-    "usuario": "",
-    "nombre": "",
-    "datos_contrato": {},
-    "ultimo_pdf_temp": "",
-    "ultimo_guardado": "",
-    "texto_extraido": "",
-    "anexos_detectados": [],
-    "procesamiento_completado": False,
-    "excel_generado": None,
-    "excel_filename": "",
-    "procesando": False,
-    "guardando": False
+    "autenticado": False, "usuario": "", "nombre": "", "datos_contrato": {},
+    "texto_extraido": "", "anexos_detectados": [], "procesamiento_completado": False,
+    "excel_generado": None, "excel_filename": "", "procesando": False, "guardando": False
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -105,7 +96,7 @@ def autenticar(usuario: str, password: str):
         return True, user_data["nombre"]
     return False, None
 
-# === DETECCIÓN MEJORADA DE ANEXOS ===
+# === DETECCIÓN DE ANEXOS ===
 def detectar_anexos_robusta(texto):
     texto_upper = texto.upper()
     anexos_detectados = []
@@ -117,14 +108,12 @@ def detectar_anexos_robusta(texto):
                        "FORMA", "GARANTÍAS", "GNR", "I", "II", "IV", "MMRDD", "O", 
                        "PACMA", "PUE", "SSPA"]
     
-    # Buscar con patrón principal
     matches_principal = re.findall(patron_principal, texto_upper)
     for match in matches_principal:
         anexo = match.strip()
         if anexo and anexo not in anexos_detectados:
             anexos_detectados.append(anexo)
     
-    # Buscar con patrón secundario
     matches_secundario = re.findall(patron_secundario, texto_upper)
     for match in matches_secundario:
         anexo = match.strip()
@@ -133,7 +122,6 @@ def detectar_anexos_robusta(texto):
            anexo not in anexos_detectados:
             anexos_detectados.append(anexo)
     
-    # Buscar anexos conocidos
     for anexo_conocido in anexos_conocidos:
         patron_especifico = rf'ANEXO\s+(?:[“]\"\'´`]*\s*)?{re.escape(anexo_conocido)}(?:\s*[“]\"\'´`])?(?:\s|\.|\,|\:|$)'
         if re.search(patron_especifico, texto_upper) and anexo_conocido not in anexos_detectados:
@@ -142,9 +130,8 @@ def detectar_anexos_robusta(texto):
     anexos_detectados = sorted(list(set(anexos_detectados)))
     return anexos_detectados
 
-# === FUNCIONES SIMPLIFICADAS PARA POSTGRESQL ===
+# === FUNCIONES PARA POSTGRESQL ===
 def preparar_archivos_para_postgresql(uploaded_file, datos_contrato):
-    """SOLO POSTGRESQL - función simplificada"""
     return {
         'principal': uploaded_file,
         'anexos': [],
@@ -153,14 +140,12 @@ def preparar_archivos_para_postgresql(uploaded_file, datos_contrato):
     }
 
 def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
-    """Guardar solo en PostgreSQL - VERSIÓN DEFINITIVA"""
     try:
         manager = get_db_manager()
         if not manager:
             st.error("❌ No hay conexión a PostgreSQL")
             return False
         
-        # Guardar en PostgreSQL
         contrato_id = manager.guardar_contrato_completo(archivos_data, datos_contrato, usuario)
         
         if contrato_id:
@@ -174,9 +159,8 @@ def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
         st.error(f"❌ Error guardando en PostgreSQL: {str(e)}")
         return False
 
-# === FUNCIÓN PARA GENERAR EXCEL ===
+# === GENERAR EXCEL ===
 def generar_excel_contrato():
-    """Genera el archivo Excel y lo prepara para descarga"""
     d = st.session_state.get("datos_contrato")
     if not d:
         st.warning("⚠️ No hay datos para generar Excel.")
@@ -190,7 +174,6 @@ def generar_excel_contrato():
         wb = load_excel(TEMPLATE_PATH)
         sh = wb.active
 
-        # Mapeo de datos al Excel
         sh["B6"] = d.get("area", "")
         sh["B7"] = d.get("contratista", "")
         sh["K7"] = d.get("contrato", "")
@@ -198,18 +181,15 @@ def generar_excel_contrato():
         sh["C13"] = d.get("monto", "")
         sh["F13"] = d.get("plazo", "")
 
-        # Inserción de anexos en celdas B29 a B59
         anexos = d.get("anexos", [])
         for idx, anexo in enumerate(anexos):
             if idx < 31:
                 sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
 
-        # Guardar en buffer de memoria
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
 
-        # Guardar en session state para descarga
         st.session_state["excel_generado"] = buffer.getvalue()
         st.session_state["excel_filename"] = f"CEDULA_LIBRO_BLANCO_{timestamp()}.xlsx"
         
@@ -218,7 +198,7 @@ def generar_excel_contrato():
         st.error(f"❌ Error al generar Excel: {e}")
         return False
 
-# === VERIFICACIÓN DE CONEXIÓN POSTGRESQL ===
+# === VERIFICAR CONEXIÓN ===
 def verificar_conexion_postgresql():
     try:
         manager = get_db_manager()
@@ -311,9 +291,7 @@ if not st.session_state.autenticado:
                 st.error("Credenciales incorrectas.")
     st.stop()
 
-# ==============================
-#  ESTILOS IGUALES AL LOGIN
-# ==============================
+# === INTERFAZ PRINCIPAL ===
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -322,13 +300,11 @@ st.markdown(f"""
     background-position: center;
     background-attachment: fixed;
 }}
-
 [data-testid="stSidebar"] {{
     background: linear-gradient(180deg, #6b0012 0%, #40000a 100%);
     color: white;
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
-
 div[data-testid="stForm"] {{
     background: rgba(255,255,255,0.90);
     border: 3px solid #d4af37;
@@ -339,12 +315,10 @@ div[data-testid="stForm"] {{
     max-width: 1066px;
     margin: 40px auto;
 }}
-
 div[data-testid="stForm"] label {{
     color: #2c2c2c !important;
     font-weight: 500;
 }}
-
 div[data-testid="stForm"] .stTextInput input,
 div[data-testid="stForm"] .stNumberInput input,
 div[data-testid="stForm"] .stTextArea textarea {{
@@ -353,11 +327,6 @@ div[data-testid="stForm"] .stTextArea textarea {{
     border-radius: 8px;
     color: #2c2c2c;
 }}
-
-div[data-testid="stForm"] .stSelectbox div {{
-    color: #2c2c2c !important;
-}}
-
 div.stButton > button:first-child {{
     background-color: #d4af37;
     color: black;
@@ -370,7 +339,6 @@ div.stButton > button:first-child:hover {{
     background-color: #b38e2f;
     color: white;
 }}
-
 .resultado-container {{
     background: rgba(255,255,255,0.95);
     border: 2px solid #d4af37;
@@ -378,7 +346,6 @@ div.stButton > button:first-child:hover {{
     padding: 20px;
     margin: 15px 0;
 }}
-
 .anexo-item {{
     background: #f8f9fa;
     border: 1px solid #dee2e6;
@@ -388,7 +355,6 @@ div.stButton > button:first-child:hover {{
     font-family: monospace;
     font-weight: bold;
 }}
-
 .anexo-header {{
     background: linear-gradient(135deg, #d4af37, #b38e2f);
     color: white;
@@ -398,7 +364,6 @@ div.stButton > button:first-child:hover {{
     text-align: center;
     font-weight: bold;
 }}
-
 .descarga-container {{
     background: rgba(255,255,255,0.95);
     border: 2px solid #28a745;
@@ -410,21 +375,17 @@ div.stButton > button:first-child:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# === BARRA LATERAL CON INFORMACIÓN DE POSTGRESQL ===
+# === BARRA LATERAL ===
 with st.sidebar:
     st.header("🗄️ Sistema de Almacenamiento")
     verificar_conexion_postgresql()
-    
     st.markdown("---")
     st.header("👤 Información de Usuario")
     st.info(f"**Usuario:** {st.session_state.usuario}")
     st.info(f"**Nombre:** {st.session_state.nombre}")
 
-# ==================================================
-#  FORMULARIO PRINCIPAL (UN SOLO FORM)
-# ==================================================
+# === FORMULARIO PRINCIPAL ===
 with st.form("form_contratos", clear_on_submit=False):
-
     if logo_base64:
         st.markdown(
             f"<div style='text-align:center;'><img src='data:image/jpeg;base64,{logo_base64}' width='200'></div>",
@@ -435,7 +396,6 @@ with st.form("form_contratos", clear_on_submit=False):
     st.markdown("<h4 style='text-align:center;'>📘 CÉDULA LIBRO BLANCO</h4>", unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader("📤 Subir contrato PDF", type=["pdf"])
-
     datos = st.session_state.get("datos_contrato", {})
 
     col1, col2 = st.columns(2, gap="large")
@@ -449,7 +409,7 @@ with st.form("form_contratos", clear_on_submit=False):
         plazo = st.text_input("Plazo (días):", datos.get("plazo",""))
         objeto = st.text_area("Descripción del contrato:", datos.get("objeto",""), height=130)
 
-    # Sección de anexos detectados
+    # ANEXOS
     st.markdown("---")
     st.markdown("<div class='anexo-header'>📎 ANEXOS DETECTADOS</div>", unsafe_allow_html=True)
     
@@ -457,30 +417,20 @@ with st.form("form_contratos", clear_on_submit=False):
     if anexos_detectados:
         st.markdown("<div class='resultado-container'>", unsafe_allow_html=True)
         st.success(f"✅ **{len(anexos_detectados)} ANEXOS IDENTIFICADOS:**")
-        
-        for i, anexo in enumerate(anexos_detectados, 1):
+        for anexo in anexos_detectados:
             st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
-        
-        st.info(f"**Nota:** Los anexos se insertarán automáticamente en las celdas B29-B59 del Excel")
+        st.info("**Nota:** Los anexos se insertarán automáticamente en las celdas B29-B59 del Excel")
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.info("ℹ️ **No se han detectado anexos.** Procesa un contrato para identificar anexos automáticamente.")
 
     datos_editados = {
-        "area": area,
-        "contrato": contrato,
-        "contratista": contratista,
-        "monto": monto,
-        "plazo": plazo,
-        "objeto": objeto,
-        "anexos": anexos_detectados
+        "area": area, "contrato": contrato, "contratista": contratista,
+        "monto": monto, "plazo": plazo, "objeto": objeto, "anexos": anexos_detectados
     }
-
     st.session_state["datos_contrato"] = datos_editados
 
     st.markdown("---")
-
-    # Botones de acción
     b1, b2, b3, b4 = st.columns(4)
     with b1:
         procesar = st.form_submit_button("🚀 Procesar contrato", use_container_width=True)
@@ -491,7 +441,7 @@ with st.form("form_contratos", clear_on_submit=False):
     with b4:
         revisar_ocr = st.form_submit_button("🔍 Revisar OCR", use_container_width=True)
 
-    # ========= PROCESAMIENTO DENTRO DEL FORM =========
+    # PROCESAMIENTO
     if procesar:
         st.session_state.procesando = True
         if not uploaded_file:
@@ -510,16 +460,12 @@ with st.form("form_contratos", clear_on_submit=False):
                     st.error(f"❌ Error en OCR: {texto}")
                 else:
                     datos_extraidos = extract_contract_data(texto) or {}
-
-                    # Limpieza de campos no requeridos
                     datos_extraidos.pop("partida", None)
                     datos_extraidos.pop("observaciones", None)
 
-                    # Extracción mejorada de plazo
                     plazo_regex = re.search(
                         r"(?:plazo del contrato|plazo(?:\s+total)?|tendrá un plazo|plazo es de)\s*(?:de\s*)?(\d{1,4})\s*(?:d[ií]as?)",
-                        texto,
-                        flags=re.IGNORECASE
+                        texto, flags=re.IGNORECASE
                     )
                     if plazo_regex:
                         datos_extraidos["plazo"] = plazo_regex.group(1)
@@ -527,7 +473,6 @@ with st.form("form_contratos", clear_on_submit=False):
                         plazo_alt = re.search(r"(\d{1,4})\s*d[ií]as", texto, flags=re.IGNORECASE)
                         datos_extraidos["plazo"] = plazo_alt.group(1) if plazo_alt else ""
 
-                    # Detección ROBUSTA de anexos
                     anexos_detectados = detectar_anexos_robusta(texto)
                     st.session_state["anexos_detectados"] = anexos_detectados
                     datos_extraidos["anexos"] = anexos_detectados
@@ -539,7 +484,7 @@ with st.form("form_contratos", clear_on_submit=False):
                     st.session_state.procesando = False
                     st.rerun()
 
-    # ========= GUARDAR EN POSTGRESQL DENTRO DEL FORM =========
+    # GUARDAR EN POSTGRESQL
     if guardar:
         st.session_state.guardando = True
         if not st.session_state.get("datos_contrato"):
@@ -549,10 +494,7 @@ with st.form("form_contratos", clear_on_submit=False):
             owner = st.session_state.get("nombre","ANONIMO")
             
             with st.spinner("🔄 Guardando en PostgreSQL..."):
-                # Preparar archivos para PostgreSQL
                 archivos_data = preparar_archivos_para_postgresql(uploaded_file, d)
-                
-                # Guardar SOLO en PostgreSQL
                 exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
                 
                 if exito_postgresql:
@@ -564,13 +506,13 @@ with st.form("form_contratos", clear_on_submit=False):
             
             st.session_state.guardando = False
 
-    # ========= GENERAR EXCEL DENTRO DEL FORM =========
+    # GENERAR EXCEL
     if generar_excel_btn:
         if generar_excel_contrato():
             st.success("✅ Excel generado exitosamente! Revisa la sección de descarga abajo.")
             st.rerun()
 
-    # ========= REVISAR OCR DENTRO DEL FORM =========
+    # REVISAR OCR
     if revisar_ocr:
         texto = st.session_state.get("texto_extraido","")
         if not texto:
@@ -581,12 +523,12 @@ with st.form("form_contratos", clear_on_submit=False):
             st.text_area(
                 "Texto OCR completo", 
                 texto[:300000] + ("...[texto truncado para visualización]" if len(texto)>3000000 else ""), 
-                height=300000,
+                height=300,
                 key="ocr_text_area"
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
-#  SECCIÓN DE DESCARGA FUERA DEL FORM
+# SECCIÓN DE DESCARGA
 if st.session_state.get("excel_generado"):
     st.markdown("---")
     st.markdown("<div class='descarga-container'>", unsafe_allow_html=True)
@@ -600,4 +542,3 @@ if st.session_state.get("excel_generado"):
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
-    
