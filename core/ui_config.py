@@ -1,3 +1,4 @@
+# core/ui_config.py
 import base64
 from pathlib import Path
 import streamlit as st
@@ -31,7 +32,7 @@ def aplicar_estilo_global(fondo_path="assets/fondo.jpg", logo_path="assets/logo.
 
         /* ===== Barra lateral ===== */
         [data-testid="stSidebar"] {{
-            background-color: #800000 !important;
+            background: linear-gradient(180deg, #6b0012 0%, #40000a 100%) !important;
         }}
         [data-testid="stSidebar"] * {{
             color: white !important;
@@ -48,8 +49,8 @@ def aplicar_estilo_global(fondo_path="assets/fondo.jpg", logo_path="assets/logo.
 
         /* ===== Botones dorados ===== */
         div.stButton > button {{
-            background-color: #b8860b;
-            color: white;
+            background-color: #d4af37;
+            color: black;
             border-radius: 8px;
             border: none;
             padding: 10px 20px;
@@ -57,18 +58,18 @@ def aplicar_estilo_global(fondo_path="assets/fondo.jpg", logo_path="assets/logo.
             transition: 0.3s;
         }}
         div.stButton > button:hover {{
-            background-color: #d4af37;
-            color: #000;
+            background-color: #b38e2f;
+            color: white;
         }}
 
         /* ===== Botón login (único diferente) ===== */
         .login-btn > button {{
-            background-color: #800000 !important;
+            background-color: #6b0012 !important;
             color: white !important;
             font-weight: bold;
         }}
         .login-btn > button:hover {{
-            background-color: #a52a2a !important;
+            background-color: #800000 !important;
             color: #fff !important;
         }}
 
@@ -94,6 +95,34 @@ def aplicar_estilo_global(fondo_path="assets/fondo.jpg", logo_path="assets/logo.
             background-color: rgba(255,255,255,0.9);
             border-radius: 5px;
         }}
+
+        /* ===== Badge PostgreSQL ===== */
+        .postgres-badge {{
+            background: linear-gradient(135deg, #336791, #2b5278);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 10px;
+        }}
+
+        /* ===== Estadísticas PostgreSQL ===== */
+        .estadisticas-container {{
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+        }}
+
+        .estadistica-item {{
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 5px 0;
+        }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -104,7 +133,7 @@ def aplicar_estilo_global(fondo_path="assets/fondo.jpg", logo_path="assets/logo.
             f"""
             <div class="header-logo">
                 <img src="{logo_url}">
-                <h2 style="color:#800000;">📄 SISTEMA DE PROCESAMIENTO DE CONTRATOS PEMEX</h2>
+                <h2 style="color:#6b0012;">🗄️ SISTEMA PEMEX - POSTGRESQL</h2>
             </div>
             """,
             unsafe_allow_html=True,

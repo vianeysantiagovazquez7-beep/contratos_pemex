@@ -5,9 +5,9 @@ from hashlib import sha256
 import warnings
 import base64
 import re
-import io  # Nuevo import
-import os  # Nuevo import para variables de entorno
-from core.database import get_db_manager  # Nuevo import
+import io
+import os
+from core.database import get_db_manager  # Import para PostgreSQL
 
 from core.config import SYSTEM_READY, UPLOAD_DIR, OUTPUT_DIR, TEMPLATE_PATH, timestamp
 from core.ocr_utils import pdf_to_text
@@ -24,7 +24,6 @@ if 'SECRET_KEY' not in st.session_state:
 # === PERSISTENCIA MEJORADA DE SESIÓN ===
 if 'session_initialized' not in st.session_state:
     st.session_state.session_initialized = True
-    # Fuerza la persistencia de la autenticación si ya estaba autenticado
     if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
     if 'usuario' not in st.session_state:
@@ -108,140 +107,72 @@ def autenticar(usuario: str, password: str):
 
 # === DETECCIÓN MEJORADA DE ANEXOS ===
 def detectar_anexos_robusta(texto):
-    """
-    Detección robusta de anexos que captura específicamente los códigos entre comillas
-    y evita falsos positivos como 'ANEXO' o palabras incompletas
-    """
-    # Convertir a mayúsculas para consistencia
     texto_upper = texto.upper()
-    
     anexos_detectados = []
     
-    # Patrón principal: busca "Anexo" seguido de comillas y contenido entre ellas
     patron_principal = r'ANEXO\s+[“”"\'´`]+\s*([A-Z0-9\-]+)\s*[“”"\'´`]+'
-    
-    # Patrón secundario: para casos sin comillas pero con formato claro
     patron_secundario = r'ANEXO\s+([A-Z]{1,3}(?:-[A-Z0-9]{1,3})?)(?:\s|\.|\,|\:|$)'
     
-    # Patrón para anexos conocidos específicos
     anexos_conocidos = ["A", "AP", "B", "B-1", "BDE", "C", "CN", "DT-9", "E", "F", 
                        "FORMA", "GARANTÍAS", "GNR", "I", "II", "IV", "MMRDD", "O", 
                        "PACMA", "PUE", "SSPA"]
     
-    # Buscar con patrón principal (comillas)
+    # Buscar con patrón principal
     matches_principal = re.findall(patron_principal, texto_upper)
     for match in matches_principal:
         anexo = match.strip()
         if anexo and anexo not in anexos_detectados:
             anexos_detectados.append(anexo)
     
-    # Buscar con patrón secundario (sin comillas pero formato claro)
+    # Buscar con patrón secundario
     matches_secundario = re.findall(patron_secundario, texto_upper)
     for match in matches_secundario:
         anexo = match.strip()
-        # Validar que sea un anexo válido (esté en la lista de conocidos o tenga formato válido)
         if (anexo in anexos_conocidos or 
             re.match(r'^[A-Z]{1,3}(?:-[A-Z0-9]{1,3})?$', anexo)) and \
            anexo not in anexos_detectados:
             anexos_detectados.append(anexo)
     
-    # Buscar específicamente anexos conocidos que puedan aparecer sin formato estándar
+    # Buscar anexos conocidos
     for anexo_conocido in anexos_conocidos:
-        # Patrón que busca el anexo conocido con contexto de "ANEXO"
-        patron_especifico = rf'ANEXO\s+(?:[“]\"\'´`]*\s*)?{re.escape(anexo_conocido)}(?:\s*[“”"\'´`])?(?:\s|\.|\,|\:|$)'
+        patron_especifico = rf'ANEXO\s+(?:[“]\"\'´`]*\s*)?{re.escape(anexo_conocido)}(?:\s*[“]\"\'´`])?(?:\s|\.|\,|\:|$)'
         if re.search(patron_especifico, texto_upper) and anexo_conocido not in anexos_detectados:
             anexos_detectados.append(anexo_conocido)
     
-    # Eliminar posibles duplicados y ordenar
     anexos_detectados = sorted(list(set(anexos_detectados)))
-    
     return anexos_detectados
 
-# === FUNCIONES PARA POSTGRESQL ===
+# === FUNCIONES SIMPLIFICADAS PARA POSTGRESQL ===
+def preparar_archivos_para_postgresql(uploaded_file, datos_contrato):
+    """SOLO POSTGRESQL - función simplificada"""
+    return {
+        'principal': uploaded_file,
+        'anexos': [],
+        'cedulas': [],
+        'soportes': [uploaded_file] if uploaded_file else []
+    }
+
 def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
-    """
-    Guarda el contrato completo en PostgreSQL automáticamente
-    """
+    """Guardar solo en PostgreSQL - VERSIÓN DEFINITIVA"""
     try:
         manager = get_db_manager()
         if not manager:
-            st.warning("⚠️ No se pudo conectar a PostgreSQL - Solo se guardará localmente")
+            st.error("❌ No hay conexión a PostgreSQL")
             return False
         
-        # Preparar datos para PostgreSQL
-        datos_postgresql = {
-            'contrato': datos_contrato.get('contrato', ''),
-            'contratista': datos_contrato.get('contratista', ''),
-            'monto': datos_contrato.get('monto', ''),
-            'plazo': datos_contrato.get('plazo', ''),
-            'objeto': datos_contrato.get('objeto', ''),
-            'anexos': datos_contrato.get('anexos', []),
-            'area': datos_contrato.get('area', 'SUBDIRECCIÓN DE PRODUCCIÓN REGIÓN NORTE GERENCIA DE MANTENIMIENTO CONFIABILIDAD Y CONSTRUCCIÓN')
-        }
-        
         # Guardar en PostgreSQL
-        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_postgresql, usuario)
+        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_contrato, usuario)
         
         if contrato_id:
             st.success(f"🗄️ **Contrato guardado en PostgreSQL** (ID: {contrato_id})")
             return True
         else:
-            st.warning("⚠️ No se pudo guardar en PostgreSQL, pero sí localmente")
+            st.error("❌ No se pudo guardar en PostgreSQL")
             return False
             
     except Exception as e:
-        st.warning(f"⚠️ Error guardando en PostgreSQL: {str(e)}")
-        st.info("📁 El contrato se guardó localmente, pero hubo un problema con la base de datos")
+        st.error(f"❌ Error guardando en PostgreSQL: {str(e)}")
         return False
-
-def preparar_archivos_para_postgresql(contrato_path, uploaded_file, datos_contrato):
-    """
-    Prepara todos los archivos del contrato para PostgreSQL
-    """
-    archivos_data = {
-        'principal': None,
-        'anexos': [],
-        'cedulas': [],
-        'soportes': []
-    }
-    
-    try:
-        # 1. Archivo principal (PDF del contrato)
-        if uploaded_file:
-            # Usar el archivo subido directamente
-            archivos_data['principal'] = uploaded_file
-        
-        # 2. Cédulas (Excel generado)
-        cedulas_path = contrato_path / "CEDULAS"
-        if cedulas_path.exists():
-            for cedula_file in cedulas_path.glob("*.xlsx"):
-                if cedula_file.is_file():
-                    with open(cedulas_path / cedula_file.name, "rb") as f:
-                        file_bytes = f.read()
-                        # Crear objeto similar a UploadedFile
-                        archivo_cedula = io.BytesIO(file_bytes)
-                        archivo_cedula.name = cedula_file.name
-                        archivos_data['cedulas'].append(archivo_cedula)
-        
-        # 3. Anexos detectados (crear archivos virtuales para los anexos detectados)
-        anexos_detectados = datos_contrato.get('anexos', [])
-        for anexo in anexos_detectados:
-            # Crear un archivo virtual con la información del anexo
-            anexo_info = f"ANEXO {anexo} - Detectado automáticamente del contrato"
-            archivo_anexo = io.BytesIO(anexo_info.encode('utf-8'))
-            archivo_anexo.name = f"ANEXO_{anexo}.txt"
-            archivos_data['anexos'].append(archivo_anexo)
-        
-        # 4. Soporte físico (el PDF original)
-        if uploaded_file:
-            # Usar el mismo archivo para soportes
-            archivos_data['soportes'].append(uploaded_file)
-        
-        return archivos_data
-        
-    except Exception as e:
-        st.error(f"❌ Error preparando archivos para PostgreSQL: {str(e)}")
-        return None
 
 # === FUNCIÓN PARA GENERAR EXCEL ===
 def generar_excel_contrato():
@@ -270,45 +201,40 @@ def generar_excel_contrato():
         # Inserción de anexos en celdas B29 a B59
         anexos = d.get("anexos", [])
         for idx, anexo in enumerate(anexos):
-            if idx < 31:  # B29 a B59 = 31 celdas
+            if idx < 31:
                 sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
 
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out = OUTPUT_DIR / f"CEDULA_LIBRO_BLANCO_{timestamp()}.xlsx"
-        save_excel(wb, out)
+        # Guardar en buffer de memoria
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
 
-        # Guardar el archivo en session state para descarga
-        with open(out, "rb") as f:
-            st.session_state["excel_generado"] = f.read()
-        st.session_state["excel_filename"] = out.name
-        
-        # === GUARDAR COPIA EN CARPETA LOCAL DEL CONTRATO ===
-        try:
-            # Buscar la última ruta de contrato guardado
-            owner = st.session_state.get("nombre", "ANONIMO")
-            numero_contrato = d.get("contrato", "")
-            if owner and numero_contrato:
-                # Buscar en la carpeta del usuario el contrato más reciente que coincida
-                user_contratos_dir = Path("data") / owner.upper() / "CONTRATOS"
-                if user_contratos_dir.exists():
-                    # Buscar carpeta que contenga el número de contrato
-                    for carpeta in user_contratos_dir.iterdir():
-                        if carpeta.is_dir() and numero_contrato in carpeta.name:
-                            cedulas_dir = carpeta / "CEDULAS"
-                            cedulas_dir.mkdir(exist_ok=True)
-                            # Guardar copia del Excel en CEDULAS
-                            with open(cedulas_dir / out.name, "wb") as f:
-                                f.write(st.session_state["excel_generado"])
-                            break
-        except Exception as e:
-            st.warning(f"⚠️ No se pudo guardar copia del Excel en carpeta local: {e}")
+        # Guardar en session state para descarga
+        st.session_state["excel_generado"] = buffer.getvalue()
+        st.session_state["excel_filename"] = f"CEDULA_LIBRO_BLANCO_{timestamp()}.xlsx"
         
         return True
     except Exception as e:
         st.error(f"❌ Error al generar Excel: {e}")
         return False
 
-# === LOGIN === (NO TOCAR)
+# === VERIFICACIÓN DE CONEXIÓN POSTGRESQL ===
+def verificar_conexion_postgresql():
+    try:
+        manager = get_db_manager()
+        if manager:
+            stats = manager.obtener_estadisticas_pemex()
+            st.sidebar.success("✅ Conectado a PostgreSQL")
+            st.sidebar.info(f"📊 Contratos en BD: {stats['total_contratos']}")
+            return True
+        else:
+            st.sidebar.error("❌ No hay conexión a PostgreSQL")
+            return False
+    except Exception as e:
+        st.sidebar.error(f"❌ Error de conexión: {e}")
+        return False
+
+# === LOGIN ===
 if not st.session_state.autenticado:
     st.markdown(
         f"""
@@ -381,18 +307,6 @@ if not st.session_state.autenticado:
                 st.session_state.usuario = login_usuario.strip().upper()
                 st.session_state.nombre = nombre or ""
                 st.success(f"Bienvenido {st.session_state.nombre}")
-                base_dir = Path("data") / st.session_state.nombre.upper()
-                if not base_dir.exists():
-                    for carpeta in [
-                        base_dir / "CONTRATOS",
-                        base_dir / "CONTRATOS" / "SOPORTES FISICOS",
-                        base_dir / "CONTRATOS" / "CEDULAS",
-                        base_dir / "CONTRATOS" / "ANEXOS",
-                        base_dir / "TEMP",
-                    ]:
-                        carpeta.mkdir(parents=True, exist_ok=True)
-                else:
-                    st.info("🔹 Carpeta personal existente. Acceso concedido.")
             else:
                 st.error("Credenciales incorrectas.")
     st.stop()
@@ -426,7 +340,6 @@ div[data-testid="stForm"] {{
     margin: 40px auto;
 }}
 
-/* Estilos para elementos internos del formulario */
 div[data-testid="stForm"] label {{
     color: #2c2c2c !important;
     font-weight: 500;
@@ -458,7 +371,6 @@ div.stButton > button:first-child:hover {{
     color: white;
 }}
 
-/* Estilos para las secciones de resultados */
 .resultado-container {{
     background: rgba(255,255,255,0.95);
     border: 2px solid #d4af37;
@@ -495,13 +407,18 @@ div.stButton > button:first-child:hover {{
     margin: 15px 0;
     text-align: center;
 }}
-
-/* Mejoras para la persistencia de sesión */
-.stApp {{
-    persistence: "memory";
-}}
 </style>
 """, unsafe_allow_html=True)
+
+# === BARRA LATERAL CON INFORMACIÓN DE POSTGRESQL ===
+with st.sidebar:
+    st.header("🗄️ Sistema de Almacenamiento")
+    verificar_conexion_postgresql()
+    
+    st.markdown("---")
+    st.header("👤 Información de Usuario")
+    st.info(f"**Usuario:** {st.session_state.usuario}")
+    st.info(f"**Nombre:** {st.session_state.nombre}")
 
 # ==================================================
 #  FORMULARIO PRINCIPAL (UN SOLO FORM)
@@ -541,7 +458,6 @@ with st.form("form_contratos", clear_on_submit=False):
         st.markdown("<div class='resultado-container'>", unsafe_allow_html=True)
         st.success(f"✅ **{len(anexos_detectados)} ANEXOS IDENTIFICADOS:**")
         
-        # Mostrar anexos en formato de lista ordenada
         for i, anexo in enumerate(anexos_detectados, 1):
             st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
         
@@ -569,7 +485,7 @@ with st.form("form_contratos", clear_on_submit=False):
     with b1:
         procesar = st.form_submit_button("🚀 Procesar contrato", use_container_width=True)
     with b2:
-        guardar = st.form_submit_button("💾 Guardar contrato", use_container_width=True)
+        guardar = st.form_submit_button("💾 Guardar en PostgreSQL", use_container_width=True)
     with b3:
         generar_excel_btn = st.form_submit_button("📊 Generar Excel", use_container_width=True)
     with b4:
@@ -623,7 +539,7 @@ with st.form("form_contratos", clear_on_submit=False):
                     st.session_state.procesando = False
                     st.rerun()
 
-    # ========= GUARDAR DENTRO DEL FORM =========
+    # ========= GUARDAR EN POSTGRESQL DENTRO DEL FORM =========
     if guardar:
         st.session_state.guardando = True
         if not st.session_state.get("datos_contrato"):
@@ -632,85 +548,19 @@ with st.form("form_contratos", clear_on_submit=False):
             d = st.session_state["datos_contrato"]
             owner = st.session_state.get("nombre","ANONIMO")
             
-            # === EXTRACCIÓN Y FORMATEO DEL NÚMERO DE CONTRATO ===
-            numero_contrato = d.get("contrato", "").strip()
-            
-            # Extraer solo dígitos del número de contrato
-            solo_digitos = re.sub(r'\D', '', numero_contrato)
-            
-            # Verificar si comienza con 64 y tiene al menos 9 dígitos (64 + 7)
-            if solo_digitos.startswith('64') and len(solo_digitos) >= 9:
-                # Tomar solo los primeros 9 dígitos (64 + 7)
-                numero_formateado = solo_digitos[:9]
-            else:
-                # Si no cumple el formato, usar el número original sin espacios
-                numero_formateado = numero_contrato.replace(" ", "_").upper() or "SIN_NUM"
-            
-            # === EXTRACCIÓN DE PALABRAS CLAVE ===
-            objeto_contrato = d.get("objeto", "").upper()
-            palabras_clave = []
-            
-            # Lista de palabras comunes a excluir
-            palabras_excluir = {"DE", "PARA", "Y", "LOS", "LAS", "DEL", "EL", "LA", "EN", "CON", 
-                               "POR", "SIN", "AL", "SE", "SU", "SUS", "UN", "UNA", "UNOS", "UNAS",
-                               "ES", "SON", "QUE", "A", "O", "E", "I", "U", "ME", "TE", "LE", "NOS",
-                               "CONTRATO", "SERVICIO", "SUMINISTRO", "OBRA", "MANTENIMIENTO"}
-            
-            if objeto_contrato:
-                # Extraer palabras de 4 o más letras que no estén en la lista de exclusión
-                palabras = re.findall(r'\b[A-Z]{4,}\b', objeto_contrato)
-                for palabra in palabras:
-                    if (palabra not in palabras_excluir and 
-                        len(palabra) >= 4 and 
-                        palabra not in palabras_clave):
-                        palabras_clave.append(palabra)
-                
-                # Limitar a 3 palabras clave máximo para evitar nombres demasiado largos
-                palabras_clave = palabras_clave[:3]
-            
-            # Crear sufijo con palabras clave
-            sufijo_clave = "_" + "_".join(palabras_clave) if palabras_clave else ""
-            
-            # Crear UID con número de contrato formateado y palabras clave
-            uid = f"CONTRATO_{numero_formateado}{sufijo_clave}"
-            
-            base = Path("data") / owner.upper() / "CONTRATOS" / uid
-            for sub in ["CEDULAS","ANEXOS","SOPORTES FISICOS"]:
-                (base/sub).mkdir(parents=True, exist_ok=True)
-
-            # === GUARDADO LOCAL (CÓDIGO ORIGINAL) ===
-            if uploaded_file:
-                with open(base / "SOPORTES FISICOS" / uploaded_file.name, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-
-            # Guardar también las palabras clave en los metadatos
-            d["palabras_clave"] = palabras_clave
-            d["numero_contrato_formateado"] = numero_formateado
-            with open(base/"metadatos.json","w",encoding="utf-8") as f:
-                json.dump(d, f, ensure_ascii=False, indent=2)
-
-            mensaje_guardado = f"✅ **Contrato guardado LOCALMENTE en:** `{base}`"
-            if palabras_clave:
-                mensaje_guardado += f"\n🔑 **Palabras clave extraídas:** {', '.join(palabras_clave)}"
-            
-            st.success(mensaje_guardado)
-
-            # === GUARDADO AUTOMÁTICO EN POSTGRESQL ===
             with st.spinner("🔄 Guardando en PostgreSQL..."):
-                archivos_data = preparar_archivos_para_postgresql(base, uploaded_file, d)
+                # Preparar archivos para PostgreSQL
+                archivos_data = preparar_archivos_para_postgresql(uploaded_file, d)
                 
-                if archivos_data:
-                    exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
-                    
-                    if exito_postgresql:
-                        st.balloons()
-                        st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN AMBOS SISTEMAS!**")
-                        st.info("📁 **Local:** Disponible en tu carpeta personal")
-                        st.info("🗄️ **PostgreSQL:** Disponible en la base de datos (hasta 4TB por archivo)")
-                    else:
-                        st.warning("⚠️ El contrato se guardó localmente, pero hubo problemas con PostgreSQL")
+                # Guardar SOLO en PostgreSQL
+                exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
+                
+                if exito_postgresql:
+                    st.balloons()
+                    st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN POSTGRESQL!**")
+                    st.info("🗄️ **Almacenamiento:** Base de datos PostgreSQL (hasta 4TB por archivo)")
                 else:
-                    st.warning("⚠️ No se pudieron preparar los archivos para PostgreSQL")
+                    st.error("❌ Error guardando en PostgreSQL. Revise los logs para más información.")
             
             st.session_state.guardando = False
 
@@ -736,9 +586,7 @@ with st.form("form_contratos", clear_on_submit=False):
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
-
-#  SECCIÓN DE DESCARGA FUERA DEL FORM (por restricciones de Streamlit)
-
+#  SECCIÓN DE DESCARGA FUERA DEL FORM
 if st.session_state.get("excel_generado"):
     st.markdown("---")
     st.markdown("<div class='descarga-container'>", unsafe_allow_html=True)
@@ -752,3 +600,4 @@ if st.session_state.get("excel_generado"):
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
+    
