@@ -75,7 +75,6 @@ class ContratosManager:
         if value is None:
             return ""
         elif isinstance(value, bool):
-            # SOLUCIÓN: Convertir bool a string numérico
             return "1" if value else "0"
         elif isinstance(value, (int, float)):
             return str(value)
@@ -85,7 +84,6 @@ class ContratosManager:
             except:
                 return str(value)
         else:
-            # Conversión absoluta
             return str(value)
 
     def _debug_datos(self, datos, titulo):
@@ -96,18 +94,17 @@ class ContratosManager:
 
     def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
         """
-        Guardar contrato en PostgreSQL - VERSIÓN DEFINITIVA
+        Guardar contrato en PostgreSQL - VERSIÓN CORREGIDA
         """
         conn = self._get_connection()
         try:
-            # DEBUG EXTENSIVO
             self._debug_datos(datos_extraidos, "DEBUG DATOS CRUDOS")
             
             file_bytes = archivo.getvalue()
             file_hash = self.calcular_hash(file_bytes)
             
-            # Crear Large Object
-            lo_oid = conn.lobject(0, 'wb', 0, True)
+            # CORRECCIÓN: Large Object con None en lugar de True
+            lo_oid = conn.lobject(0, 'wb', 0, None)  # ← CORREGIDO AQUÍ
             
             # Escribir archivo en chunks
             chunk_size = 1024 * 1024
@@ -123,14 +120,13 @@ class ContratosManager:
             contratista = self._safe_string(datos_extraidos.get('contratista', ''))
             monto = self._safe_string(datos_extraidos.get('monto', ''))
             
-            # ⚠️ SOLUCIÓN DEFINITIVA PARA PLAZO
+            # SOLUCIÓN DEFINITIVA PARA PLAZO
             plazo_original = datos_extraidos.get('plazo', '')
             print(f"🚨 PLAZO ORIGINAL: {repr(plazo_original)} (tipo: {type(plazo_original).__name__})")
             
             plazo = self._safe_string(plazo_original)
             print(f"🚨 PLAZO CONVERTIDO: {repr(plazo)} (tipo: {type(plazo).__name__})")
             
-            # VERIFICACIÓN FINAL
             if not isinstance(plazo, str):
                 plazo = str(plazo) if plazo is not None else ""
                 print(f"🚨 PLAZO FORZADO: {repr(plazo)}")
@@ -186,7 +182,6 @@ class ContratosManager:
         Guardar contrato completo - SOLO POSTGRESQL
         """
         try:
-            # Debug antes de procesar
             self._debug_datos(datos_contrato, "DATOS CONTRATO ORIGINAL")
             
             # Limpiar datos
@@ -208,7 +203,6 @@ class ContratosManager:
                 
         except Exception as e:
             st.error(f"❌ Error guardando en PostgreSQL: {str(e)}")
-            # NO HAY RESPALDO LOCAL - solo PostgreSQL
             raise Exception(f"Error guardando contrato: {str(e)}")
     
     def buscar_contratos_pemex(self, filtros=None):
@@ -280,9 +274,9 @@ class ContratosManager:
             columnas = [desc[0] for desc in cur.description]
             metadata = dict(zip(columnas, resultado))
             
-            # Recuperar Large Object
+            # CORRECCIÓN: Large Object con parámetros correctos
             lo_oid = metadata['lo_oid']
-            large_obj = conn.lobject(lo_oid, 'rb')
+            large_obj = conn.lobject(lo_oid, 'rb', 0, None)  # ← CORREGIDO AQUÍ
             
             chunks = []
             chunk_size = 1024 * 1024
@@ -384,4 +378,3 @@ def get_db_manager():
     except Exception as e:
         st.error(f"❌ Error conectando a PostgreSQL: {str(e)}")
         return None
-    
