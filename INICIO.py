@@ -63,24 +63,71 @@ for key, default in {
     if key not in st.session_state:
         st.session_state[key] = default
 
-# === CARGAR USUARIOS ===
+# === CARGAR USUARIOS - VERSIÓN MEJORADA ===
 def cargar_usuarios():
-    ruta = Path("usuarios.json")
-    if not ruta.exists():
-        st.error("No se encontró el archivo usuarios.json")
+    # Buscar el archivo en múltiples ubicaciones posibles
+    rutas_posibles = [
+        Path("usuarios.json"),  # Raíz del proyecto
+        Path(__file__).parent / "usuarios.json",  # Misma carpeta que INICIO.py
+        Path.cwd() / "usuarios.json",  # Directorio actual de trabajo
+    ]
+    
+    ruta_encontrada = None
+    for ruta in rutas_posibles:
+        if ruta.exists():
+            ruta_encontrada = ruta
+            break
+    
+    # DEBUG: Mostrar información de diagnóstico
+    st.sidebar.write("🔍 Diagnóstico de usuarios.json:")
+    st.sidebar.write(f"Directorio actual: {os.getcwd()}")
+    st.sidebar.write(f"Archivos en directorio: {[f for f in os.listdir('.') if f.endswith('.json')]}")
+    
+    if not ruta_encontrada:
+        st.error(f"""
+        ❌ No se encontró el archivo usuarios.json
+        
+        **Ubicaciones buscadas:**
+        - {Path("usuarios.json").absolute()}
+        - {Path(__file__).parent / "usuarios.json"}
+        - {Path.cwd() / "usuarios.json"}
+        
+        **Solución inmediata:**
+        1. Verifica que el archivo 'usuarios.json' esté en la raíz del proyecto
+        2. Ejecuta: `ls -la usuarios.json` para confirmar
+        3. Si no existe, créalo con los usuarios correctos
+        """)
         st.stop()
-    with open(ruta, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    usuarios = {}
-    for u in data:
-        usuario = u.get("usuario", "").strip().upper()
-        password_raw = u.get("password", "") or ""
-        password_hash = sha256(password_raw.encode()).hexdigest()
-        usuarios[usuario] = {
-            "password_hash": password_hash,
-            "nombre": u.get("nombre", "").strip().upper()
-        }
-    return usuarios
+    
+    st.sidebar.success(f"✅ Archivo encontrado en: {ruta_encontrada}")
+    
+    try:
+        with open(ruta_encontrada, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        usuarios = {}
+        for u in data:
+            usuario = u.get("usuario", "").strip().upper()
+            if not usuario:
+                continue
+                
+            password_raw = u.get("password", "") or ""
+            password_hash = sha256(password_raw.encode()).hexdigest()
+            usuarios[usuario] = {
+                "password_hash": password_hash,
+                "nombre": u.get("nombre", "").strip().upper()
+            }
+        
+        st.sidebar.success(f"✅ {len(usuarios)} usuarios cargados correctamente")
+        st.sidebar.write(f"Usuarios disponibles: {list(usuarios.keys())}")
+        return usuarios
+        
+    except json.JSONDecodeError as e:
+        st.error(f"❌ Error en el formato del archivo JSON: {e}")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Error leyendo el archivo de usuarios: {e}")
+        st.stop()
 
 USERS = cargar_usuarios()
 
@@ -287,6 +334,7 @@ if not st.session_state.autenticado:
                 st.session_state.usuario = login_usuario.strip().upper()
                 st.session_state.nombre = nombre or ""
                 st.success(f"Bienvenido {st.session_state.nombre}")
+                st.rerun()
             else:
                 st.error("Credenciales incorrectas.")
     st.stop()
