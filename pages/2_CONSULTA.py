@@ -19,20 +19,6 @@ def get_base64_image(path: Path):
 fondo_base64 = get_base64_image(FONDO)
 logo_base64 = get_base64_image(LOGO)
 
-
-# --- Mensaje informativo simplificado ---
-st.markdown(
-    """
-    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
-        <strong>💡 Sistema de Consulta:</strong><br>
-        • Búsqueda rápida por número de contrato<br>
-        • Descarga directa de archivos PDF<br>
-        • Estadísticas en tiempo real del sistema<br>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
 # --- Verificar sesión ---
 if "autenticado" not in st.session_state or not st.session_state.autenticado:
     st.error("Acceso denegado. Inicie sesión.")
@@ -40,6 +26,9 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 
 usuario = st.session_state.get("nombre", "").upper()
 
+# ==============================
+#  ESTILOS MEJORADOS
+# ==============================
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -55,18 +44,26 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.90);
+.main-container {{
+    background: rgba(255,255,255,0.95);
     border: 3px solid #d4af37;
     border-radius: 20px;
     box-shadow: 0 18px 45px rgba(0,0,0,0.22);
-    padding: 26px 36px;
+    padding: 30px 40px;
     width: 100%;
-    max-width: 1066px;
-    margin: 40px auto;
+    max-width: 1200px;
+    margin: 30px auto;
 }}
 
 /* Estilos para elementos internos del formulario */
+div[data-testid="stForm"] {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 15px;
+    padding: 20px 25px;
+    margin: 20px 0;
+}}
+
 div[data-testid="stForm"] label {{
     color: #2c2c2c !important;
     font-weight: 500;
@@ -154,12 +151,16 @@ div.stButton > button:first-child:hover {{
 .archivo-item {{
     background: white;
     border: 1px solid #e9ecef;
-    border-radius: 6px;
-    padding: 12px;
-    margin: 8px 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    transition: all 0.3s ease;
+}}
+
+.archivo-item:hover {{
+    background: #e9ecef;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }}
 
 .boton-descarga {{
@@ -167,8 +168,10 @@ div.stButton > button:first-child:hover {{
     color: white !important;
     border: none;
     border-radius: 6px;
-    padding: 6px 12px;
+    padding: 8px 16px;
     font-size: 0.9em;
+    width: 100%;
+    margin: 5px 0;
 }}
 
 .boton-descarga:hover {{
@@ -178,26 +181,80 @@ div.stButton > button:first-child:hover {{
 .carpeta-header {{
     background: linear-gradient(135deg, #6b0012, #40000a);
     color: white;
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin: 15px 0 10px 0;
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin: 20px 0 10px 0;
+    text-align: center;
     font-weight: bold;
+    font-size: 1.2em;
 }}
 
 .usuario-info {{
     background: linear-gradient(135deg, #d4af37, #b38e2f);
     color: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin: 10px 0;
+    padding: 12px 20px;
+    border-radius: 10px;
+    margin: 15px 0;
     text-align: center;
     font-weight: bold;
+    font-size: 1.1em;
+}}
+
+.estadisticas-container {{
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin: 20px 0;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}}
+
+.estadistica-item {{
+    background: rgba(255,255,255,0.2);
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+}}
+
+.contrato-encontrado {{
+    background: rgba(255,255,255,0.98);
+    border: 2px solid #28a745;
+    border-radius: 12px;
+    padding: 25px;
+    margin: 20px 0;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}}
+
+.busqueda-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}}
+
+.resultados-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}}
+
+.info-message {{
+    background: rgba(255,255,255,0.9);
+    border: 2px solid #17a2b8;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+    text-align: center;
 }}
 </style>
 """, unsafe_allow_html=True)
 
 # ==================================================
-#  FUNCIONES AUXILIARES - SIMPLIFICADAS
+#  FUNCIONES AUXILIARES - MANTENIDAS
 # ==================================================
 def mostrar_contrato_completo(manager, contrato_id):
     """✅ FUNCIÓN MEJORADA: Mostrar contrato completo con descarga directa"""
@@ -223,17 +280,18 @@ def mostrar_contrato_completo(manager, contrato_id):
         
         # Mostrar información del contrato
         st.markdown("<div class='contrato-encontrado'>", unsafe_allow_html=True)
-        st.markdown("**📋 Información del contrato:**")
+        st.markdown("### 📋 Información del Contrato")
+        
         col1, col2 = st.columns(2)
         with col1:
-            st.write(f"- **Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
-            st.write(f"- **Contratista:** {contrato_info.get('contratista', 'No especificado')}")
-            st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
+            st.write(f"**• Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
+            st.write(f"**• Contratista:** {contrato_info.get('contratista', 'No especificado')}")
+            st.write(f"**• Área:** {contrato_info.get('area', 'No especificado')}")
         with col2:
-            st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
-            st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
-            st.write(f"- **Tamaño archivo:** {archivo_data['metadata']['tamaño_bytes'] / 1024 / 1024:.2f} MB")
-            st.write(f"- **Fecha de subida:** {contrato_info.get('fecha_subida', 'No especificada')}")
+            st.write(f"**• Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
+            st.write(f"**• Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
+            st.write(f"**• Tamaño archivo:** {archivo_data['metadata']['tamaño_bytes'] / 1024 / 1024:.2f} MB")
+            st.write(f"**• Fecha de subida:** {contrato_info.get('fecha_subida', 'No especificada')}")
         
         # Mostrar archivo principal
         st.markdown("---")
@@ -246,8 +304,8 @@ def mostrar_contrato_completo(manager, contrato_id):
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.markdown(f"**{metadata['nombre_archivo']}**")
-            st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+            st.markdown(f"**📄 {metadata['nombre_archivo']}**")
+            st.markdown(f"**Tamaño:** {size_mb:.2f} MB")
         
         with col2:
             # Botón de descarga
@@ -265,6 +323,7 @@ def mostrar_contrato_completo(manager, contrato_id):
         # Mostrar anexos si existen
         anexos = contrato_info.get('anexos', [])
         if anexos:
+            st.markdown("---")
             st.markdown("#### 📋 Anexos Detectados")
             for anexo in anexos:
                 st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
@@ -315,33 +374,39 @@ def mostrar_estadisticas(manager):
         st.error(f"❌ Error obteniendo estadísticas: {str(e)}")
 
 # ==================================================
-#  INTERFAZ PRINCIPAL - SIMPLIFICADA
+#  INTERFAZ PRINCIPAL - MEJORADA
 # ==================================================
+st.markdown("<div class='main-container'>", unsafe_allow_html=True)
+
+# Logo y título
+if logo_base64:
+    st.markdown(
+        f"<div style='text-align:center; margin-bottom: 20px;'><img src='data:image/jpeg;base64,{logo_base64}' width='180'></div>",
+        unsafe_allow_html=True
+    )
+
+st.markdown("<h1 style='text-align:center; color: #6b0012; margin-bottom: 10px;'>CONSULTA DE CONTRATOS PEMEX</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color: #666; margin-bottom: 30px;'>Sistema de búsqueda y consulta de contratos</p>", unsafe_allow_html=True)
+
+# Información del usuario
+st.markdown(f"<div class='usuario-info'>👤 Usuario: {usuario}</div>", unsafe_allow_html=True)
+
+# --- Verificar conexión a la base de datos ---
+manager = get_db_manager()
+if not manager:
+    st.error("❌ No se pudo conectar a la base de datos")
+    st.stop()
+
+# --- Mostrar estadísticas ---
+mostrar_estadisticas(manager)
+
+# ==================================================
+#  BÚSQUEDA DE CONTRATOS
+# ==================================================
+st.markdown("<div class='busqueda-section'>", unsafe_allow_html=True)
+st.markdown("### 🔍 Búsqueda de Contratos")
+
 with st.form("form_consulta", clear_on_submit=False):
-    
-    if logo_base64:
-        st.markdown(
-            f"<div style='text-align:center;'><img src='data:image/jpeg;base64,{logo_base64}' width='200'></div>",
-            unsafe_allow_html=True
-        )
-
-    st.markdown("<h2 style='text-align:center;'>SISTEMA DE CONSULTA DE CONTRATOS PEMEX</h2>", unsafe_allow_html=True)
-    
-    # Información del usuario
-    st.markdown(f"<div class='usuario-info'>👤 Usuario: {usuario}</div>", unsafe_allow_html=True)
-
-    # --- Verificar conexión a la base de datos ---
-    manager = get_db_manager()
-    if not manager:
-        st.error("❌ No se pudo conectar a la base de datos")
-        st.stop()
-
-    # --- Mostrar estadísticas ---
-    mostrar_estadisticas(manager)
-
-    # --- Buscador simplificado ---
-    st.markdown("---")
-    st.markdown("### 🔍 Búsqueda de Contratos")
     st.markdown("Busca contratos por número de contrato:")
     
     busqueda = st.text_input(
@@ -351,58 +416,82 @@ with st.form("form_consulta", clear_on_submit=False):
         label_visibility="collapsed"
     )
 
-    # Botón de búsqueda
-    buscar = st.form_submit_button("🔍 Buscar Contrato", use_container_width=True)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        buscar = st.form_submit_button("🔍 Buscar Contrato", use_container_width=True)
+    with col_btn2:
+        actualizar = st.form_submit_button("🔄 Actualizar Vista", use_container_width=True)
 
-    # Buscar contratos
-    try:
-        if buscar and busqueda:
-            with st.spinner("Buscando contratos..."):
-                filtros = {'numero_contrato': busqueda}
-                contratos_db = manager.buscar_contratos_pemex(filtros)
-                
-                if not contratos_db:
-                    st.warning(f"❌ No se encontraron contratos con el número: {busqueda}")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ==================================================
+#  RESULTADOS DE BÚSQUEDA
+# ==================================================
+# Buscar contratos
+try:
+    if buscar and busqueda:
+        with st.spinner("Buscando contratos..."):
+            filtros = {'numero_contrato': busqueda}
+            contratos_db = manager.buscar_contratos_pemex(filtros)
+            
+            if not contratos_db:
+                st.markdown("<div class='resultados-section'>", unsafe_allow_html=True)
+                st.warning(f"❌ No se encontraron contratos con el número: **{busqueda}**")
+                st.info("💡 Verifica el número de contrato e intenta nuevamente")
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div class='resultados-section'>", unsafe_allow_html=True)
+                # --- Mostrar resultados de búsqueda ---
+                if len(contratos_db) == 1:
+                    # Si hay solo un resultado, mostrarlo directamente
+                    contrato_seleccionado = contratos_db[0]
+                    contrato_id = contrato_seleccionado['id']
+                    
+                    st.success(f"✅ **1 contrato encontrado**")
+                    st.markdown("---")
+                    
+                    # Mostrar contrato completo automáticamente
+                    mostrar_contrato_completo(manager, contrato_id)
+                    
                 else:
-                    # --- Mostrar resultados de búsqueda ---
-                    if len(contratos_db) == 1:
-                        # Si hay solo un resultado, mostrarlo directamente
-                        contrato_seleccionado = contratos_db[0]
-                        contrato_id = contrato_seleccionado['id']
+                    # Si hay múltiples resultados, mostrar selector
+                    st.success(f"✅ **{len(contratos_db)} contratos encontrados**")
+                    st.markdown("---")
+                    
+                    seleccion_db = st.selectbox(
+                        "Selecciona un contrato para ver sus detalles:",
+                        contratos_db,
+                        format_func=lambda c: f"{c['numero_contrato']} - {c['contratista']}",
+                        key="select_contrato_db"
+                    )
+                    
+                    if seleccion_db:
+                        contrato_id = seleccion_db['id']
                         
-                        st.markdown("---")
-                        st.markdown(f"### 📄 Contrato Encontrado")
-                        
-                        # Mostrar contrato completo automáticamente
+                        # Mostrar contrato completo
                         mostrar_contrato_completo(manager, contrato_id)
-                        
-                    else:
-                        # Si hay múltiples resultados, mostrar selector
-                        st.markdown("---")
-                        st.markdown(f"### 📂 Contratos Encontrados ({len(contratos_db)} resultados)")
-                        
-                        seleccion_db = st.selectbox(
-                            "Selecciona un contrato para ver sus detalles:",
-                            contratos_db,
-                            format_func=lambda c: f"{c['numero_contrato']} - {c['contratista']}",
-                            key="select_contrato_db"
-                        )
-                        
-                        if seleccion_db:
-                            contrato_id = seleccion_db['id']
-                            
-                            # Mostrar contrato completo
-                            mostrar_contrato_completo(manager, contrato_id)
-        
-        elif not buscar and not busqueda:
-            st.info("💡 Ingresa un número de contrato y haz click en 'Buscar Contrato'")
+                st.markdown("</div>", unsafe_allow_html=True)
+    
+    elif not buscar and not busqueda:
+        st.markdown("<div class='info-message'>", unsafe_allow_html=True)
+        st.info("💡 **Instrucciones:** Ingresa un número de contrato en el campo de búsqueda y haz click en 'Buscar Contrato' para comenzar")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    except Exception as e:
-        st.error(f"❌ Error consultando base de datos: {str(e)}")
+except Exception as e:
+    st.error(f"❌ Error consultando base de datos: {str(e)}")
 
-    # Botón de actualización
-    st.markdown("---")
-    if st.form_submit_button("🔄 Actualizar Vista", use_container_width=True):
-        st.rerun()
+# ==================================================
+#  PIE DE PÁGINA
+# ==================================================
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>💡 Sistema de Consulta de Contratos PEMEX</strong><br>
+        • Búsqueda rápida por número de contrato • Descarga directa de archivos PDF • Estadísticas en tiempo real
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre del main-container

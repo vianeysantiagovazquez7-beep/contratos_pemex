@@ -145,4 +145,4 @@ if not st.session_state.autenticado:
     st.stop()
 # Redirección si está autenticado
 if st.session_state.get("autenticado", False):
-    st.switch_page("pages/1_PROCESAMIENTO.py")
+    st.switch_page("pages/1_PAGINA PRINCIPAL.py")

@@ -117,6 +117,9 @@ def generar_excel_contrato():
         st.error(f"❌ Error al generar Excel: {e}")
         return False
 
+# ==============================
+#  ESTILOS MEJORADOS
+# ==============================
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -132,18 +135,26 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.90);
+.main-container {{
+    background: rgba(255,255,255,0.95);
     border: 3px solid #d4af37;
     border-radius: 20px;
     box-shadow: 0 18px 45px rgba(0,0,0,0.22);
-    padding: 26px 36px;
+    padding: 30px 40px;
     width: 100%;
-    max-width: 1066px;
-    margin: 40px auto;
+    max-width: 1200px;
+    margin: 30px auto;
 }}
 
 /* Estilos para elementos internos del formulario */
+div[data-testid="stForm"] {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 15px;
+    padding: 20px 25px;
+    margin: 20px 0;
+}}
+
 div[data-testid="stForm"] label {{
     color: #2c2c2c !important;
     font-weight: 500;
@@ -340,24 +351,55 @@ div.stButton > button:first-child:hover {{
     margin-top: 10px;
 }}
 
-.postgres-badge {{
-    background: linear-gradient(135deg, #336791, #2b5278);
+.usuario-info {{
+    background: linear-gradient(135deg, #d4af37, #b38e2f);
     color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8em;
+    padding: 12px 20px;
+    border-radius: 10px;
+    margin: 15px 0;
+    text-align: center;
     font-weight: bold;
-    margin-left: 10px;
+    font-size: 1.1em;
 }}
 
-.local-badge {{
-    background: linear-gradient(135deg, #28a745, #218838);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8em;
-    font-weight: bold;
-    margin-left: 10px;
+.procesamiento-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}}
+
+.anexos-section {{
+    background: rgba(248,249,250,0.9);
+    border: 2px solid #17a2b8;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+}}
+
+.ocr-container {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #6f42c1;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+}}
+
+.acciones-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+}}
+
+.excel-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #28a745;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -380,62 +422,80 @@ with st.sidebar:
     st.header("👤 Usuario")
     st.info(f"**Nombre:** {st.session_state.nombre}")
 
-# === INTERFAZ PRINCIPAL ===
+# ==================================================
+#  INTERFAZ PRINCIPAL - MEJORADA
+# ==================================================
 st.markdown("<div class='main-container'>", unsafe_allow_html=True)
 
+# Logo y título
 if logo_base64:
-    st.markdown(f'<div style="text-align:center"><img src="data:image/jpeg;base64,{logo_base64}" width="150"></div>', unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align:center; margin-bottom: 20px;'><img src='data:image/jpeg;base64,{logo_base64}' width='180'></div>",
+        unsafe_allow_html=True
+    )
 
-st.markdown("<h2 style='text-align:center'>PROCESAMIENTO DE CONTRATOS</h2>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color: #6b0012; margin-bottom: 10px;'>PROCESAMIENTO DE CONTRATOS PEMEX</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color: #666; margin-bottom: 30px;'>Sistema de carga, procesamiento y gestión de contratos</p>", unsafe_allow_html=True)
+
+# Información del usuario
 st.markdown(f"<div class='usuario-info'>👤 Usuario: {st.session_state.nombre}</div>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align:center'>📘 CÉDULA LIBRO BLANCO</h4>", unsafe_allow_html=True)
+
+# ==================================================
+#  FORMULARIO DE PROCESAMIENTO
+# ==================================================
+st.markdown("<div class='procesamiento-section'>", unsafe_allow_html=True)
+st.markdown("### 📤 Carga y Procesamiento de Contratos")
 
 with st.form("form_contratos"):
-    uploaded_file = st.file_uploader("📤 Subir contrato PDF", type=["pdf"])
+    st.markdown("#### 📄 Subir Contrato PDF")
+    uploaded_file = st.file_uploader("Selecciona el archivo PDF del contrato:", type=["pdf"], label_visibility="collapsed")
+    
+    st.markdown("---")
+    st.markdown("#### 📋 Información del Contrato")
+    
     datos = st.session_state.get("datos_contrato", {})
-
+    
     col1, col2 = st.columns(2, gap="large")
     with col1:
-        area = st.text_input("Área:", datos.get("area",""))
-        contrato = st.text_input("Número de contrato:", datos.get("contrato",""))
-        contratista = st.text_input("Contratista:", datos.get("contratista",""))
+        area = st.text_input("Área:", datos.get("area",""), placeholder="Ej: Administración, Operaciones...")
+        contrato = st.text_input("Número de contrato:", datos.get("contrato",""), placeholder="Ej: 12345, PEMEX-2024...")
+        contratista = st.text_input("Contratista:", datos.get("contratista",""), placeholder="Nombre del contratista...")
 
     with col2:
-        monto = st.text_input("Monto del contrato:", datos.get("monto",""))
-        plazo = st.text_input("Plazo (días):", datos.get("plazo",""))
-        objeto = st.text_area("Descripción del contrato:", datos.get("objeto",""), height=100)
+        monto = st.text_input("Monto del contrato:", datos.get("monto",""), placeholder="Ej: $1,000,000.00")
+        plazo = st.text_input("Plazo (días):", datos.get("plazo",""), placeholder="Ej: 30, 60, 90...")
+        objeto = st.text_area("Descripción del contrato:", datos.get("objeto",""), height=100, placeholder="Descripción detallada del objeto del contrato...")
 
-    # ANEXOS
-    anexos_detectados = st.session_state.get("anexos_detectados", [])
-    if anexos_detectados:
-        st.markdown("---")
-        st.success(f"✅ **{len(anexos_detectados)} ANEXOS IDENTIFICADOS:**")
-        for anexo in anexos_detectados:
-            st.write(f"📄 ANEXO \"{anexo}\"")
-
+    # Guardar datos editados
     datos_editados = {
         "area": area, "contrato": contrato, "contratista": contratista,
-        "monto": monto, "plazo": plazo, "objeto": objeto, "anexos": anexos_detectados
+        "monto": monto, "plazo": plazo, "objeto": objeto, "anexos": st.session_state.get("anexos_detectados", [])
     }
     st.session_state["datos_contrato"] = datos_editados
 
-    st.markdown("---")
-    b1, b2, b3, b4 = st.columns(4)
-    with b1:
-        procesar = st.form_submit_button("🚀 Procesar", use_container_width=True)
-    with b2:
-        guardar = st.form_submit_button("💾 Guardar", use_container_width=True)
-    with b3:
-        generar_excel_btn = st.form_submit_button("📊 Excel", use_container_width=True)
-    with b4:
-        revisar_ocr = st.form_submit_button("🔍 Ver OCR", use_container_width=True)
+    # ==================================================
+    #  ACCIONES DEL FORMULARIO
+    # ==================================================
+    st.markdown("<div class='acciones-section'>", unsafe_allow_html=True)
+    st.markdown("#### ⚡ Acciones de Procesamiento")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        procesar = st.form_submit_button("🚀 Procesar PDF", use_container_width=True)
+    with col2:
+        guardar = st.form_submit_button("💾 Guardar Contrato", use_container_width=True)
+    with col3:
+        generar_excel_btn = st.form_submit_button("📊 Generar Excel", use_container_width=True)
+    with col4:
+        revisar_ocr = st.form_submit_button("🔍 Ver Texto OCR", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # PROCESAMIENTO
     if procesar:
         if not uploaded_file:
-            st.warning("⚠️ Sube un PDF antes de procesar.")
+            st.warning("⚠️ Sube un archivo PDF antes de procesar.")
         else:
-            with st.spinner("Procesando PDF..."):
+            with st.spinner("Procesando PDF con OCR..."):
                 temp_path = UPLOAD_DIR / uploaded_file.name
                 temp_path.parent.mkdir(exist_ok=True)
                 temp_path.write_bytes(uploaded_file.getbuffer())
@@ -458,7 +518,7 @@ with st.form("form_contratos"):
                     datos_extraidos["anexos"] = anexos_detectados
 
                     st.session_state["datos_contrato"] = datos_extraidos
-                    st.success("✅ Procesamiento completado")
+                    st.success("✅ Procesamiento completado exitosamente")
                     st.rerun()
 
     # GUARDAR EN BASE DE DATOS
@@ -468,39 +528,55 @@ with st.form("form_contratos"):
         else:
             d = st.session_state["datos_contrato"]
             
-            with st.spinner("Guardando contrato..."):
+            with st.spinner("Guardando contrato en la base de datos..."):
                 archivos_data = preparar_archivos_para_bd(uploaded_file)
                 exito_bd = guardar_contrato_bd(archivos_data, d)
                 
                 if exito_bd:
                     st.balloons()
-                    st.success("🎉 ¡Contrato guardado exitosamente!")
+                    st.success("🎉 ¡Contrato guardado exitosamente en el sistema!")
 
     # GENERAR EXCEL
     if generar_excel_btn:
         if generar_excel_contrato():
-            st.success("✅ Excel generado exitosamente!")
+            st.success("✅ Archivo Excel generado exitosamente!")
 
     # REVISAR OCR
     if revisar_ocr:
         texto = st.session_state.get("texto_extraido","")
         if not texto:
-            st.info("ℹ️ No hay OCR disponible. Procesa un contrato primero.")
+            st.info("ℹ️ No hay texto OCR disponible. Procesa un contrato primero.")
         else:
-            st.markdown("---")
             st.markdown("<div class='ocr-container'>", unsafe_allow_html=True)
-            st.subheader("🔍 Texto Extraído por OCR")
+            st.markdown("#### 🔍 Texto Extraído por OCR")
             texto_preview = texto[:5000] + ("..." if len(texto) > 5000 else "")
             st.text_area("Texto OCR (primeras 5000 caracteres)", texto_preview, height=200, key="ocr_text_area")
-            st.info(f"📄 Total de caracteres: {len(texto)}")
+            st.info(f"📄 **Total de caracteres extraídos:** {len(texto)}")
             st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre de procesamiento-section
 
-# SECCIÓN DE DESCARGA FUERA DEL FORM
+# ==================================================
+#  ANEXOS DETECTADOS
+# ==================================================
+anexos_detectados = st.session_state.get("anexos_detectados", [])
+if anexos_detectados:
+    st.markdown("<div class='anexos-section'>", unsafe_allow_html=True)
+    st.markdown("#### 📋 Anexos Detectados Automáticamente")
+    st.success(f"✅ **{len(anexos_detectados)} anexos identificados en el documento:**")
+    
+    for anexo in anexos_detectados:
+        st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ==================================================
+#  DESCARGA DE EXCEL
+# ==================================================
 if st.session_state.get("excel_generado"):
-    st.markdown("---")
-    st.success("📊 **EXCEL GENERADO EXITOSAMENTE**")
+    st.markdown("<div class='excel-section'>", unsafe_allow_html=True)
+    st.markdown("#### 📊 Cédula Libro Blanco Generada")
+    st.success("✅ **Archivo Excel generado exitosamente**")
     
     st.download_button(
         label="📥 DESCARGAR ARCHIVO EXCEL",
@@ -509,3 +585,20 @@ if st.session_state.get("excel_generado"):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ==================================================
+#  PIE DE PÁGINA
+# ==================================================
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>💡 Sistema de Procesamiento de Contratos PEMEX</strong><br>
+        • Carga y procesamiento de contratos • Detección automática de anexos • Generación de cédulas Excel • Almacenamiento seguro
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre del main-container

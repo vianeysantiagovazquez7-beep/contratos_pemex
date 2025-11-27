@@ -55,7 +55,26 @@ def eliminar_contrato_bd(manager, contrato_id):
             return False, "❌ No se pudo eliminar el contrato"
     except Exception as e:
         return False, f"❌ Error eliminando contrato: {str(e)}"
+    
+    # ==================================================
+#  PIE DE PÁGINA
+# ==================================================
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>💡 Sistema de Archivo de Contratos PEMEX</strong><br>
+        • Gestión centralizada de contratos • Descarga segura de documentos • Eliminación controlada
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
+st.markdown("</div>", unsafe_allow_html=True)  
+
+# ==============================
+#  ESTILOS MEJORADOS
+# ==============================
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -71,18 +90,26 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.90);
+.main-container {{
+    background: rgba(255,255,255,0.95);
     border: 3px solid #d4af37;
     border-radius: 20px;
     box-shadow: 0 18px 45px rgba(0,0,0,0.22);
-    padding: 26px 36px;
+    padding: 30px 40px;
     width: 100%;
-    max-width: 1066px;
-    margin: 40px auto;
+    max-width: 1200px;
+    margin: 30px auto;
 }}
 
 /* Estilos para elementos internos del formulario */
+div[data-testid="stForm"] {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 15px;
+    padding: 20px 25px;
+    margin: 20px 0;
+}}
+
 div[data-testid="stForm"] label {{
     color: #2c2c2c !important;
     font-weight: 500;
@@ -212,6 +239,8 @@ div.stButton > button:first-child:hover {{
     cursor: pointer;
     transition: all 0.3s ease;
     border: 2px solid #b38e2f;
+    text-align: left;
+    width: 100%;
 }}
 
 .carpeta-cerrada:hover {{
@@ -221,16 +250,16 @@ div.stButton > button:first-child:hover {{
 }}
 
 .carpeta-abierta {{
-    background: rgba(255,255,255,0.95);
+    background: rgba(255,255,255,0.98);
     border: 2px solid #d4af37;
-    border-radius: 10px;
-    padding: 20px;
-    margin: 10px 0;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 25px;
+    margin: 15px 0;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
 }}
 
 .seccion-archivos {{
-    background: rgba(248,249,250,0.8);
+    background: rgba(248,249,250,0.9);
     border: 1px solid #dee2e6;
     border-radius: 8px;
     padding: 15px;
@@ -269,8 +298,8 @@ div.stButton > button:first-child:hover {{
     background: #fff3cd;
     border: 2px solid #ffc107;
     border-radius: 8px;
-    padding: 15px;
-    margin: 10px 0;
+    padding: 20px;
+    margin: 15px 0;
 }}
 
 .accion-rapida {{
@@ -279,24 +308,41 @@ div.stButton > button:first-child:hover {{
     margin-top: 10px;
 }}
 
-.postgres-badge {{
-    background: linear-gradient(135deg, #336791, #2b5278);
+.estadisticas-simple {{
+    background: linear-gradient(135deg, #28a745, #20c997);
     color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8em;
-    font-weight: bold;
-    margin-left: 10px;
+    padding: 20px;
+    border-radius: 12px;
+    margin: 20px 0;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }}
 
-.local-badge {{
-    background: linear-gradient(135deg, #28a745, #218838);
+.usuario-info {{
+    background: linear-gradient(135deg, #d4af37, #b38e2f);
     color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8em;
+    padding: 12px 20px;
+    border-radius: 10px;
+    margin: 15px 0;
+    text-align: center;
     font-weight: bold;
-    margin-left: 10px;
+    font-size: 1.1em;
+}}
+
+.busqueda-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}}
+
+.contratos-section {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -318,49 +364,55 @@ if not manager:
     st.stop()
 
 # ==================================================
-#  INTERFAZ PRINCIPAL
+#  INTERFAZ PRINCIPAL - TODO DENTRO DEL CONTENEDOR
 # ==================================================
 st.markdown("<div class='main-container'>", unsafe_allow_html=True)
 
+# Logo y título
 if logo_base64:
     st.markdown(
-        f"<div style='text-align:center;'><img src='data:image/jpeg;base64,{logo_base64}' width='150'></div>",
+        f"<div style='text-align:center; margin-bottom: 20px;'><img src='data:image/jpeg;base64,{logo_base64}' width='150'></div>",
         unsafe_allow_html=True
     )
 
-st.markdown("<h2 style='text-align:center;'>ARCHIVO DE CONTRATOS</h2>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color: #6b0012; margin-bottom: 10px;'>ARCHIVO DE CONTRATOS</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color: #666; margin-bottom: 30px;'>Sistema de gestión y consulta de contratos PEMEX</p>", unsafe_allow_html=True)
 
 # Información del usuario
-st.info(f"👤 **Usuario:** {nombre}")
+st.markdown(f"<div class='usuario-info'>👤 Usuario: {nombre}</div>", unsafe_allow_html=True)
 
 # ==================================================
 #  ESTADÍSTICA SIMPLE
 # ==================================================
+st.markdown("<div class='estadisticas-simple'>", unsafe_allow_html=True)
 try:
     stats = manager.obtener_estadisticas_pemex()
-    
-    st.markdown("<div class='estadisticas-simple'>", unsafe_allow_html=True)
     st.markdown(f"### 📊 CONTRATOS EN SISTEMA: {stats['total_contratos']}")
-    st.markdown("</div>", unsafe_allow_html=True)
-    
+    st.markdown(f"**👥 Contratistas únicos:** {stats.get('contratistas_unicos', 0)} | **💾 Almacenamiento:** {stats['total_bytes'] / (1024*1024):.2f} MB")
 except Exception as e:
     st.error(f"❌ Error obteniendo estadísticas: {str(e)}")
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ==================================================
 #  BÚSQUEDA Y FILTROS
 # ==================================================
-st.markdown("---")
+st.markdown("<div class='busqueda-section'>", unsafe_allow_html=True)
 st.markdown("### 🔍 Buscar Contratos")
 
 with st.form("busqueda_form"):
     col1, col2 = st.columns(2)
     with col1:
-        numero_contrato = st.text_input("Número de contrato")
+        numero_contrato = st.text_input("Número de contrato", placeholder="Ej: 12345, PEMEX-2024...")
     with col2:
-        contratista = st.text_input("Contratista")
+        contratista = st.text_input("Contratista", placeholder="Nombre del contratista...")
     
-    buscar = st.form_submit_button("🔍 Buscar", use_container_width=True)
-    actualizar = st.form_submit_button("🔄 Actualizar lista", use_container_width=True)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        buscar = st.form_submit_button("🔍 Buscar Contratos", use_container_width=True)
+    with col_btn2:
+        actualizar = st.form_submit_button("🔄 Actualizar Lista", use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # Aplicar filtros
 filtros = {}
@@ -396,17 +448,17 @@ else:
 # ==================================================
 #  LISTA DE CONTRATOS CON CARPETAS EXPANDIBLES
 # ==================================================
-st.markdown("---")
+st.markdown("<div class='contratos-section'>", unsafe_allow_html=True)
 st.markdown("### 📂 Contratos Guardados")
 
 if not contratos_lista:
-    st.info("ℹ️ No hay contratos en el sistema")
+    st.info("ℹ️ No hay contratos en el sistema. Utilice la página de procesamiento para agregar contratos.")
 else:
     # Mostrar resultados de búsqueda
     if filtros:
-        st.info(f"🔍 Mostrando {len(contratos_lista)} contratos que coinciden con la búsqueda")
+        st.success(f"🔍 **{len(contratos_lista)} contratos encontrados** que coinciden con la búsqueda")
     else:
-        st.info(f"📊 Total de contratos: {len(contratos_lista)}")
+        st.info(f"📊 **Total de contratos en el sistema:** {len(contratos_lista)}")
 
     # Mostrar cada contrato como carpeta
     for contrato_id, contrato_nombre in contratos_lista:
@@ -435,19 +487,20 @@ else:
                     st.rerun()
             
             # Información del contrato
+            st.markdown("---")
             st.markdown("**📋 Información del contrato:**")
             col_info1, col_info2 = st.columns(2)
             with col_info1:
-                st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
-                st.write(f"- **Fecha de subida:** {contrato_info.get('fecha_subida', 'No especificada')}")
+                st.write(f"**• Área:** {contrato_info.get('area', 'No especificado')}")
+                st.write(f"**• Fecha de subida:** {contrato_info.get('fecha_subida', 'No especificada')}")
             with col_info2:
-                st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
-                st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
+                st.write(f"**• Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
+                st.write(f"**• Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
             
             # Descripción
             descripcion = contrato_info.get('descripcion', '')
             if descripcion:
-                st.markdown(f"**Descripción:** {descripcion}")
+                st.markdown(f"**• Descripción:** {descripcion}")
             
             # Obtener archivo del contrato
             success, archivo_data = obtener_contrato_completo_bd(manager, contrato_id)
@@ -464,8 +517,7 @@ else:
                 col_file1, col_file2 = st.columns([3, 1])
                 with col_file1:
                     st.markdown(f"**📄 {metadata['nombre_archivo']}**")
-                    st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
-                    # ❌ ELIMINADO: Información técnica del tipo de archivo
+                    st.markdown(f"**Tamaño:** {size_mb:.2f} MB")
                 
                 with col_file2:
                     # Botón de descarga del archivo principal
@@ -530,4 +582,5 @@ else:
                 st.session_state.contrato_expandido = contrato_id
                 st.rerun()
 
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre de contratos-section
+
