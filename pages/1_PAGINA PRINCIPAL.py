@@ -38,7 +38,8 @@ if 'datos_contrato' not in st.session_state:
         'texto_extraido': "",
         'anexos_detectados': [],
         'excel_generado': None,
-        'excel_filename': ""
+        'excel_filename': "",
+        'scroll_to_bottom': False
     })
 
 # === FUNCIONES ===
@@ -118,7 +119,7 @@ def generar_excel_contrato():
         return False
 
 # ==============================
-#  ESTILOS MEJORADOS
+#  ESTILOS MEJORADOS - ANCHO COMPLETO
 # ==============================
 st.markdown(f"""
 <style>
@@ -141,9 +142,9 @@ st.markdown(f"""
     border-radius: 20px;
     box-shadow: 0 18px 45px rgba(0,0,0,0.22);
     padding: 30px 40px;
-    width: 100%;
-    max-width: 1200px;
-    margin: 30px auto;
+    width: 95%;
+    max-width: 95vw;
+    margin: 20px auto;
 }}
 
 /* Estilos para elementos internos del formulario */
@@ -153,6 +154,7 @@ div[data-testid="stForm"] {{
     border-radius: 15px;
     padding: 20px 25px;
     margin: 20px 0;
+    width: 100%;
 }}
 
 div[data-testid="stForm"] label {{
@@ -167,6 +169,7 @@ div[data-testid="stForm"] .stTextArea textarea {{
     border: 2px solid #d4af37;
     border-radius: 8px;
     color: #2c2c2c;
+    width: 100%;
 }}
 
 div[data-testid="stForm"] .stSelectbox div {{
@@ -180,6 +183,7 @@ div.stButton > button:first-child {{
     border-radius: 8px;
     border: none;
     height: 44px;
+    width: 100%;
 }}
 div.stButton > button:first-child:hover {{
     background-color: #b38e2f;
@@ -193,6 +197,7 @@ div.stButton > button:first-child:hover {{
     border-radius: 12px;
     padding: 20px;
     margin: 15px 0;
+    width: 100%;
 }}
 
 .anexo-item {{
@@ -222,6 +227,7 @@ div.stButton > button:first-child:hover {{
     padding: 20px;
     margin: 15px 0;
     text-align: center;
+    width: 100%;
 }}
 
 .contrato-header {{
@@ -242,6 +248,7 @@ div.stButton > button:first-child:hover {{
     padding: 15px;
     margin: 10px 0;
     transition: all 0.3s ease;
+    width: 100%;
 }}
 
 .archivo-item:hover {{
@@ -284,6 +291,7 @@ div.stButton > button:first-child:hover {{
     cursor: pointer;
     transition: all 0.3s ease;
     border: 2px solid #b38e2f;
+    width: 100%;
 }}
 
 .carpeta-cerrada:hover {{
@@ -299,6 +307,7 @@ div.stButton > button:first-child:hover {{
     padding: 20px;
     margin: 10px 0;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    width: 100%;
 }}
 
 .seccion-archivos {{
@@ -307,6 +316,7 @@ div.stButton > button:first-child:hover {{
     border-radius: 8px;
     padding: 15px;
     margin: 10px 0;
+    width: 100%;
 }}
 
 .boton-descarga {{
@@ -329,12 +339,14 @@ div.stButton > button:first-child:hover {{
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
+    width: 100%;
 }}
 
 .archivo-acciones {{
     display: flex;
     gap: 10px;
     margin-top: 10px;
+    width: 100%;
 }}
 
 .confirmacion-eliminar {{
@@ -343,12 +355,14 @@ div.stButton > button:first-child:hover {{
     border-radius: 8px;
     padding: 15px;
     margin: 10px 0;
+    width: 100%;
 }}
 
 .accion-rapida {{
     display: flex;
     gap: 10px;
     margin-top: 10px;
+    width: 100%;
 }}
 
 .usuario-info {{
@@ -360,6 +374,7 @@ div.stButton > button:first-child:hover {{
     text-align: center;
     font-weight: bold;
     font-size: 1.1em;
+    width: 100%;
 }}
 
 .procesamiento-section {{
@@ -368,6 +383,7 @@ div.stButton > button:first-child:hover {{
     border-radius: 12px;
     padding: 20px;
     margin: 20px 0;
+    width: 100%;
 }}
 
 .anexos-section {{
@@ -376,6 +392,7 @@ div.stButton > button:first-child:hover {{
     border-radius: 10px;
     padding: 15px;
     margin: 15px 0;
+    width: 100%;
 }}
 
 .ocr-container {{
@@ -384,6 +401,7 @@ div.stButton > button:first-child:hover {{
     border-radius: 10px;
     padding: 20px;
     margin: 15px 0;
+    width: 100%;
 }}
 
 .acciones-section {{
@@ -392,6 +410,7 @@ div.stButton > button:first-child:hover {{
     border-radius: 10px;
     padding: 20px;
     margin: 20px 0;
+    width: 100%;
 }}
 
 .excel-section {{
@@ -400,6 +419,13 @@ div.stButton > button:first-child:hover {{
     border-radius: 10px;
     padding: 20px;
     margin: 20px 0;
+    width: 100%;
+}}
+
+/* Scroll automático */
+.scroll-target {{
+    position: relative;
+    top: -100px;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -479,6 +505,9 @@ with st.form("form_contratos"):
     st.markdown("<div class='acciones-section'>", unsafe_allow_html=True)
     st.markdown("#### ⚡ Acciones de Procesamiento")
     
+    # Punto de scroll automático
+    st.markdown('<div class="scroll-target" id="acciones-botones"></div>', unsafe_allow_html=True)
+    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         procesar = st.form_submit_button("🚀 Procesar PDF", use_container_width=True)
@@ -518,6 +547,7 @@ with st.form("form_contratos"):
                     datos_extraidos["anexos"] = anexos_detectados
 
                     st.session_state["datos_contrato"] = datos_extraidos
+                    st.session_state.scroll_to_bottom = True
                     st.success("✅ Procesamiento completado exitosamente")
                     st.rerun()
 
@@ -588,6 +618,24 @@ if st.session_state.get("excel_generado"):
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==================================================
+#  SCROLL AUTOMÁTICO
+# ==================================================
+if st.session_state.get('scroll_to_bottom', False):
+    st.session_state.scroll_to_bottom = False
+    # JavaScript para scroll automático
+    js = """
+    <script>
+        setTimeout(function() {
+            var element = document.getElementById('acciones-botones');
+            if (element) {
+                element.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        }, 100);
+    </script>
+    """
+    st.components.v1.html(js, height=0, width=0)
+
+# ==================================================
 #  PIE DE PÁGINA
 # ==================================================
 st.markdown("---")
@@ -601,4 +649,4 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown("</div>", unsafe_allow_html=True)  # Cierre del main-container
+st.markdown("</div>", unsafe_allow_html=True)  
