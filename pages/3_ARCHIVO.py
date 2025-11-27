@@ -56,9 +56,6 @@ def eliminar_contrato_bd(manager, contrato_id):
     except Exception as e:
         return False, f"❌ Error eliminando contrato: {str(e)}"
 
-# ==============================
-#  ESTILOS SIMPLIFICADOS
-# ==============================
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -70,17 +67,41 @@ st.markdown(f"""
 
 [data-testid="stSidebar"] {{
     background: linear-gradient(180deg, #6b0012 0%, #40000a 100%);
+    color: white;
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-.main-container {{
-    background: rgba(255,255,255,0.95);
-    border-radius: 15px;
-    padding: 25px;
-    margin: 20px auto;
+div[data-testid="stForm"] {{
+    background: rgba(255,255,255,0.90);
+    border: 3px solid #d4af37;
+    border-radius: 20px;
+    box-shadow: 0 18px 45px rgba(0,0,0,0.22);
+    padding: 26px 36px;
+    width: 100%;
+    max-width: 1066px;
+    margin: 40px auto;
 }}
 
-.stButton button {{
+/* Estilos para elementos internos del formulario */
+div[data-testid="stForm"] label {{
+    color: #2c2c2c !important;
+    font-weight: 500;
+}}
+
+div[data-testid="stForm"] .stTextInput input,
+div[data-testid="stForm"] .stNumberInput input,
+div[data-testid="stForm"] .stTextArea textarea {{
+    background: rgba(255,255,255,0.85);
+    border: 2px solid #d4af37;
+    border-radius: 8px;
+    color: #2c2c2c;
+}}
+
+div[data-testid="stForm"] .stSelectbox div {{
+    color: #2c2c2c !important;
+}}
+
+div.stButton > button:first-child {{
     background-color: #d4af37;
     color: black;
     font-weight: 600;
@@ -88,39 +109,128 @@ st.markdown(f"""
     border: none;
     height: 44px;
 }}
-.stButton button:hover {{
+div.stButton > button:first-child:hover {{
     background-color: #b38e2f;
     color: white;
 }}
 
+/* Estilos para las secciones de resultados */
+.resultado-container {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+}}
+
+.anexo-item {{
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    font-family: monospace;
+    font-weight: bold;
+}}
+
+.anexo-header {{
+    background: linear-gradient(135deg, #d4af37, #b38e2f);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    text-align: center;
+    font-weight: bold;
+}}
+
+.descarga-container {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #28a745;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+    text-align: center;
+}}
+
+.contrato-header {{
+    background: linear-gradient(135deg, #6b0012, #40000a);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin: 20px 0 10px 0;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2em;
+}}
+
+.archivo-item {{
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    transition: all 0.3s ease;
+}}
+
+.archivo-item:hover {{
+    background: #e9ecef;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}}
+
+.eliminar-btn {{
+    background-color: #dc3545 !important;
+    color: white !important;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.9em;
+    width: 100%;
+    margin-top: 10px;
+}}
+
+.eliminar-btn:hover {{
+    background-color: #c82333 !important;
+}}
+
+.subir-btn {{
+    background-color: #28a745 !important;
+    color: white !important;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 600;
+    width: 100%;
+}}
+
 .carpeta-cerrada {{
-    background: linear-gradient(135deg, #336791, #2b5278);
+    background: linear-gradient(135deg, #d4af37, #b38e2f);
     color: white;
     padding: 15px 20px;
     border-radius: 10px;
     margin: 10px 0;
     cursor: pointer;
     transition: all 0.3s ease;
-    border: 2px solid #2b5278;
+    border: 2px solid #b38e2f;
 }}
 
 .carpeta-cerrada:hover {{
-    background: linear-gradient(135deg, #2b5278, #336791);
+    background: linear-gradient(135deg, #b38e2f, #d4af37);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }}
 
 .carpeta-abierta {{
     background: rgba(255,255,255,0.95);
-    border: 2px solid #336791;
+    border: 2px solid #d4af37;
     border-radius: 10px;
     padding: 20px;
     margin: 10px 0;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }}
 
-.archivo-item {{
-    background: #f8f9fa;
+.seccion-archivos {{
+    background: rgba(248,249,250,0.8);
     border: 1px solid #dee2e6;
     border-radius: 8px;
     padding: 15px;
@@ -142,38 +252,17 @@ st.markdown(f"""
     background-color: #138496 !important;
 }}
 
-.eliminar-btn {{
-    background-color: #dc3545 !important;
-    color: white !important;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 0.9em;
-    width: 100%;
-    margin: 5px 0;
+.archivo-info {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
 }}
 
-.eliminar-btn:hover {{
-    background-color: #c82333 !important;
-}}
-
-.estadisticas-simple {{
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-    padding: 15px;
-    border-radius: 10px;
-    margin: 15px 0;
-    text-align: center;
-}}
-
-.anexo-item {{
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin: 4px 0;
-    font-family: monospace;
-    font-weight: bold;
+.archivo-acciones {{
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
 }}
 
 .confirmacion-eliminar {{
@@ -182,6 +271,32 @@ st.markdown(f"""
     border-radius: 8px;
     padding: 15px;
     margin: 10px 0;
+}}
+
+.accion-rapida {{
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}}
+
+.postgres-badge {{
+    background: linear-gradient(135deg, #336791, #2b5278);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-left: 10px;
+}}
+
+.local-badge {{
+    background: linear-gradient(135deg, #28a745, #218838);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-left: 10px;
 }}
 </style>
 """, unsafe_allow_html=True)

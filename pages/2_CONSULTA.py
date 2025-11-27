@@ -193,30 +193,6 @@ div.stButton > button:first-child:hover {{
     text-align: center;
     font-weight: bold;
 }}
-
-.estadisticas-container {{
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-    padding: 15px;
-    border-radius: 10px;
-    margin: 15px 0;
-    text-align: center;
-}}
-
-.estadistica-item {{
-    background: rgba(255,255,255,0.2);
-    border-radius: 8px;
-    padding: 10px;
-    margin: 5px 0;
-}}
-
-.contrato-encontrado {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #28a745;
-    border-radius: 10px;
-    padding: 20px;
-    margin: 15px 0;
-}}
 </style>
 """, unsafe_allow_html=True)
 

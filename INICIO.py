@@ -56,129 +56,93 @@ def cargar_usuarios():
 
 USERS = cargar_usuarios()
 
-# === AUTENTICACIÓN ===
-def autenticar(usuario: str, password: str):
-    if not usuario:
-        return False, None
-    user_data = USERS.get(usuario.strip().upper())
-    if not user_data:
-        return False, None
-    hashed = sha256(password.encode()).hexdigest()
-    if user_data["password_hash"] == hashed:
-        return True, user_data["nombre"]
-    return False, None
-
-# === ESTILOS ===
-st.markdown(f"""
-<style>
-[data-testid="stAppViewContainer"] {{
-    background-image: url("data:image/jpeg;base64,{fondo_base64}");
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-}}
-
-.main-container {{
-    background: rgba(255,255,255,0.95);
-    border-radius: 20px;
-    padding: 40px;
-    margin: 50px auto;
-    max-width: 500px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    border: 3px solid #d4af37;
-}}
-
-.logo-container {{
-    text-align: center;
-    margin-bottom: 30px;
-}}
-
-.welcome-title {{
-    text-align: center;
-    color: #6b0012;
-    font-weight: bold;
-    margin-bottom: 10px;
-}}
-
-.welcome-subtitle {{
-    text-align: center;
-    color: #666;
-    margin-bottom: 30px;
-}}
-
-.stTextInput input {{
-    background: rgba(255,255,255,0.9);
-    border: 2px solid #d4af37;
-    border-radius: 10px;
-    padding: 12px;
-}}
-
-.stButton button {{
-    background-color: #d4af37;
-    color: black;
-    font-weight: bold;
-    border-radius: 10px;
-    border: none;
-    padding: 12px 24px;
-    width: 100%;
-    font-size: 16px;
-}}
-.stButton button:hover {{
-    background-color: #b38e2f;
-    color: white;
-}}
-
-.footer {{
-    text-align: center;
-    margin-top: 30px;
-    color: #666;
-    font-size: 0.9em;
-}}
-</style>
-""", unsafe_allow_html=True)
-
-# === INTERFAZ DE LOGIN ===
-st.markdown("<div class='main-container'>", unsafe_allow_html=True)
-
-# Logo
-if logo_base64:
+if not st.session_state.autenticado:
     st.markdown(
-        f"<div class='logo-container'><img src='data:image/jpeg;base64,{logo_base64}' width='120'></div>",
-        unsafe_allow_html=True
+        f"""
+        <style>
+        [data-testid="stAppViewContainer"] {{
+            background-image: url("data:image/jpeg;base64,{fondo_base64}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        div[data-testid="stForm"] {{
+            background: rgba(255, 255, 255, 0.85);
+            border: 3px solid #d4af37;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+            backdrop-filter: blur(15px);
+            padding: 60px 50px;
+            width: 70%;
+            max-width: 900px;
+            margin: auto;
+        }}
+        [data-testid="stSidebar"] {{
+            background: linear-gradient(180deg, #6b0012 0%, #40000a 100%);
+            color: white;
+        }}
+        [data-testid="stSidebar"] * {{
+            color: white !important;
+        }}
+        div.stButton > button:first-child {{
+            background-color: #d4af37;
+            color: black;
+            font-weight: 600;
+            border-radius: 10px;
+            border: none;
+            height: 45px;
+        }}
+        div.stButton > button:first-child:hover {{
+            background-color: #b38e2f;
+            color: white;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-# Título
-st.markdown("<h1 class='welcome-title'>SISTEMA DE CONTRATOS PEMEX</h1>", unsafe_allow_html=True)
-st.markdown("<p class='welcome-subtitle'>Ingrese sus credenciales para acceder al sistema</p>", unsafe_allow_html=True)
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    with st.form("login_form", clear_on_submit=False):
+        if logo_base64:
+            st.markdown(
+                f"<div style='text-align:center;'><img src='data:image/jpeg;base64,{logo_base64}' width='230'></div>",
+                unsafe_allow_html=True,
+            )
+        st.markdown(
+            "<h2 style='font-family:Montserrat;color:#1c1c1c;text-align:center;'>🔐 SISTEMA DE CONTRATOS PEMEX</h2>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<h4 style='font-family:Poppins;color:#000;text-align:center;background:white;padding:6px 10px;border-radius:8px;display:inline-block;'>INICIO DE SESIÓN</h4>",
+            unsafe_allow_html=True,
+        )
 
-# Formulario de login
-with st.form("login_form"):
-    usuario = st.text_input("👤 Usuario", placeholder="Ingrese su usuario...")
-    password = st.text_input("🔒 Contraseña", type="password", placeholder="Ingrese su contraseña...")
-    
-    submit = st.form_submit_button("🚀 INICIAR SESIÓN", use_container_width=True)
+        login_usuario = st.text_input("👤 NÚMERO DE FICHA", key="login_usuario", placeholder="Ingresa tu número de ficha")
+        login_password = st.text_input("🔒 CONTRASEÑA", type="password", key="login_password", placeholder="Ingresa tu contraseña")
+        submit = st.form_submit_button("INICIAR SESIÓN", use_container_width=True)
 
-# Procesar login
-if submit:
-    if not usuario or not password:
-        st.error("⚠️ Por favor ingrese usuario y contraseña")
-    else:
-        with st.spinner("Verificando credenciales..."):
-            autenticado, nombre = autenticar(usuario, password)
-            
-            if autenticado:
+        if submit:
+            ok, nombre = (login_usuario, login_password)
+            if ok:
                 st.session_state.autenticado = True
-                st.session_state.usuario = usuario.strip().upper()
-                st.session_state.nombre = nombre
-                st.success(f"✅ Bienvenido {nombre}")
-                st.rerun()
+                st.session_state.usuario = login_usuario.strip().upper()
+                st.session_state.nombre = nombre or ""
+                st.success(f"Bienvenido {st.session_state.nombre}")
+                base_dir = Path("data") / st.session_state.nombre.upper()
+                if not base_dir.exists():
+                    for carpeta in [
+                        base_dir / "CONTRATOS",
+                        base_dir / "CONTRATOS" / "SOPORTES FISICOS",
+                        base_dir / "CONTRATOS" / "CEDULAS",
+                        base_dir / "CONTRATOS" / "ANEXOS",
+                        base_dir / "TEMP",
+                    ]:
+                        carpeta.mkdir(parents=True, exist_ok=True)
+                else:
+                    st.info("🔹 Carpeta personal existente. Acceso concedido.")
             else:
-                st.error("❌ Usuario o contraseña incorrectos")
-
-# Footer
-st.markdown("<div class='footer'>Sistema de Gestión de Contratos PEMEX</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
-
+                st.error("Credenciales incorrectas.")
+    st.stop()
 # Redirección si está autenticado
 if st.session_state.get("autenticado", False):
     st.switch_page("pages/1_PROCESAMIENTO.py")
