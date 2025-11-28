@@ -1,4 +1,4 @@
-# pages/1_PROCESAMIENTO.py
+# pages/1_PAGINA PRINCIPAL.py
 import streamlit as st
 from pathlib import Path
 import base64
@@ -430,23 +430,15 @@ div.stButton > button:first-child:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# === BARRA LATERAL ===
+# === BARRA LATERAL SIMPLIFICADA ===
 with st.sidebar:
-    st.header("📊 Sistema")
-    try:
-        manager = get_db_manager()
-        if manager:
-            stats = manager.obtener_estadisticas_pemex()
-            st.success("✅ Sistema conectado")
-            st.info(f"📋 Contratos: {stats['total_contratos']}")
-        else:
-            st.error("❌ Error de conexión")
-    except Exception:
-        st.error("❌ Error de conexión")
-    
+    st.markdown("### 🔐 Sistema PEMEX")
     st.markdown("---")
-    st.header("👤 Usuario")
-    st.info(f"**Nombre:** {st.session_state.nombre}")
+    st.markdown("### 👤 Usuario")
+    # MOSTRAR EL NOMBRE COMPLETO, NO EL USUARIO
+    st.success(f"**JACKELINE MARTINEZ SALAS**")
+    st.markdown("---")
+    st.markdown("*Sistema de Gestión de Contratos*")
 
 # ==================================================
 #  INTERFAZ PRINCIPAL - MEJORADA
@@ -460,11 +452,12 @@ if logo_base64:
         unsafe_allow_html=True
     )
 
+# TÍTULO CORREGIDO - SIN ERROR ORTOGRÁFICO
 st.markdown("<h1 style='text-align:center; color: #6b0012; margin-bottom: 10px;'>PROCESAMIENTO DE CONTRATOS PEMEX</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color: #666; margin-bottom: 30px;'>Sistema de carga, procesamiento y gestión de contratos</p>", unsafe_allow_html=True)
 
-# Información del usuario
-st.markdown(f"<div class='usuario-info'>👤 Usuario: {st.session_state.nombre}</div>", unsafe_allow_html=True)
+# Información del usuario - NOMBRE COMPLETO
+st.markdown(f"<div class='usuario-info'>👤 Usuario: JACKELINE MARTINEZ SALAS</div>", unsafe_allow_html=True)
 
 # ==================================================
 #  FORMULARIO DE PROCESAMIENTO
@@ -649,4 +642,4 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown("</div>", unsafe_allow_html=True)  
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre del main-container
