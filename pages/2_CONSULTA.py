@@ -28,12 +28,8 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 
 usuario = st.session_state.get("nombre", "").upper()
 
-# ==============================
-#  ESTILOS MEJORADOS - ALINEADOS CON LOGIN (CONTENEDOR 85% + SCROLL INTERNO)
-# ==============================
 st.markdown(f"""
 <style>
-/* === Fondo global como LOGIN === */
 [data-testid="stAppViewContainer"] {{
     background-image: url("data:image/jpeg;base64,{fondo_base64}");
     background-size: cover;
@@ -47,32 +43,18 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-/* === CONTENEDOR PRINCIPAL ESTILO LOGIN (85%) === */
-.contenedor-85 {{
-    background: rgba(255, 255, 255, 0.85);
-    border: 3px solid #d4af37;
-    border-radius: 20px;
-    box-shadow: 0 15px 40px rgba(0,0,0,0.25);
-    backdrop-filter: blur(15px);
-    padding: 60px 50px;
-
-    width: 70%;
-    max-width: 900px;
-    margin: auto;
-
-    height: 85vh;
-    overflow-y: auto;
-}}
-
-/* === TODOS TUS ESTILOS INTERNOS QUEDAN IGUALES === */
 div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.90);
     border: 3px solid #d4af37;
     border-radius: 20px;
-    padding: 20px 25px;
+    box-shadow: 0 18px 45px rgba(0,0,0,0.22);
+    padding: 26px 36px;
     width: 100%;
+    max-width: 1066px;
+    margin: 40px auto;
 }}
 
+/* Estilos para elementos internos del formulario */
 div[data-testid="stForm"] label {{
     color: #2c2c2c !important;
     font-weight: 500;
@@ -85,7 +67,6 @@ div[data-testid="stForm"] .stTextArea textarea {{
     border: 2px solid #d4af37;
     border-radius: 8px;
     color: #2c2c2c;
-    width: 100%;
 }}
 
 div[data-testid="stForm"] .stSelectbox div {{
@@ -96,16 +77,113 @@ div.stButton > button:first-child {{
     background-color: #d4af37;
     color: black;
     font-weight: 600;
-    border-radius: 10px;
+    border-radius: 8px;
     border: none;
-    height: 45px;
+    height: 44px;
 }}
 div.stButton > button:first-child:hover {{
     background-color: #b38e2f;
     color: white;
 }}
+
+/* Estilos para las secciones de resultados */
+.resultado-container {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #d4af37;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+}}
+
+.anexo-item {{
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    font-family: monospace;
+    font-weight: bold;
+}}
+
+.anexo-header {{
+    background: linear-gradient(135deg, #d4af37, #b38e2f);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    text-align: center;
+    font-weight: bold;
+}}
+
+.descarga-container {{
+    background: rgba(255,255,255,0.95);
+    border: 2px solid #28a745;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+    text-align: center;
+}}
+
+.contrato-item {{
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    transition: all 0.3s ease;
+}}
+
+.contrato-item:hover {{
+    background: #e9ecef;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}}
+
+.archivo-item {{
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 8px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}}
+
+.boton-descarga {{
+    background-color: #17a2b8 !important;
+    color: white !important;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.9em;
+}}
+
+.boton-descarga:hover {{
+    background-color: #138496 !important;
+}}
+
+.carpeta-header {{
+    background: linear-gradient(135deg, #6b0012, #40000a);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 15px 0 10px 0;
+    font-weight: bold;
+}}
+
+.usuario-info {{
+    background: linear-gradient(135deg, #d4af37, #b38e2f);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    text-align: center;
+    font-weight: bold;
+}}
 </style>
 """, unsafe_allow_html=True)
+
 
 # ==================================================
 #  FUNCIONES AUXILIARES - MANTENIDAS
