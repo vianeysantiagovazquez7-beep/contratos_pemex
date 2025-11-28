@@ -136,6 +136,7 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
+/* CONTENEDOR PRINCIPAL - Mismo diseño que login */
 .main-container {{
     background: rgba(255,255,255,0.95);
     border: 3px solid #d4af37;
@@ -147,14 +148,17 @@ st.markdown(f"""
     margin: 20px auto;
 }}
 
-/* Estilos para elementos internos del formulario */
+/* FORMULARIO INTERNO - EXACTAMENTE IGUAL AL LOGIN */
 div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #d4af37;
-    border-radius: 15px;
-    padding: 20px 25px;
-    margin: 20px 0;
-    width: 100%;
+    background: rgba(255, 255, 255, 0.85);
+    border: 3px solid #d4af37;
+    border-radius: 20px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+    backdrop-filter: blur(15px);
+    padding: 60px 50px;
+    width: 85%;
+    max-width: 900px;
+    margin: 20px auto;
 }}
 
 div[data-testid="stForm"] label {{
@@ -180,9 +184,9 @@ div.stButton > button:first-child {{
     background-color: #d4af37;
     color: black;
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: 10px;
     border: none;
-    height: 44px;
+    height: 45px;
     width: 100%;
 }}
 div.stButton > button:first-child:hover {{
