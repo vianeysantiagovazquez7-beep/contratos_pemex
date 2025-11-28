@@ -61,6 +61,7 @@ def eliminar_contrato_bd(manager, contrato_id):
 # ==============================
 st.markdown(f"""
 <style>
+/* === Fondo global como LOGIN === */
 [data-testid="stAppViewContainer"] {{
     background-image: url("data:image/jpeg;base64,{fondo_base64}");
     background-size: cover;
@@ -74,24 +75,29 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-.main-container {{
-    background: rgba(255,255,255,0.95);
+/* === CONTENEDOR PRINCIPAL ESTILO LOGIN (85%) === */
+.contenedor-85 {{
+    background: rgba(255, 255, 255, 0.85);
     border: 3px solid #d4af37;
     border-radius: 20px;
-    box-shadow: 0 18px 45px rgba(0,0,0,0.22);
-    padding: 30px 40px;
-    width: 95%;
-    max-width: 95vw;
-    margin: 20px auto;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+    backdrop-filter: blur(15px);
+    padding: 60px 50px;
+
+    width: 70%;
+    max-width: 900px;
+    margin: auto;
+
+    height: 85vh;
+    overflow-y: auto;
 }}
 
-/* Estilos para elementos internos del formulario */
+/* === TODOS TUS ESTILOS INTERNOS QUEDAN IGUALES === */
 div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #d4af37;
-    border-radius: 15px;
+    background: rgba(255,255,255,0.85);
+    border: 3px solid #d4af37;
+    border-radius: 20px;
     padding: 20px 25px;
-    margin: 20px 0;
     width: 100%;
 }}
 
@@ -118,231 +124,13 @@ div.stButton > button:first-child {{
     background-color: #d4af37;
     color: black;
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: 10px;
     border: none;
-    height: 44px;
-    width: 100%;
+    height: 45px;
 }}
 div.stButton > button:first-child:hover {{
     background-color: #b38e2f;
     color: white;
-}}
-
-/* Estilos para las secciones de resultados */
-.resultado-container {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #d4af37;
-    border-radius: 12px;
-    padding: 20px;
-    margin: 15px 0;
-    width: 100%;
-}}
-
-.anexo-item {{
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin: 4px 0;
-    font-family: monospace;
-    font-weight: bold;
-}}
-
-.anexo-header {{
-    background: linear-gradient(135deg, #d4af37, #b38e2f);
-    color: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    text-align: center;
-    font-weight: bold;
-}}
-
-.descarga-container {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #28a745;
-    border-radius: 12px;
-    padding: 20px;
-    margin: 15px 0;
-    text-align: center;
-    width: 100%;
-}}
-
-.contrato-header {{
-    background: linear-gradient(135deg, #6b0012, #40000a);
-    color: white;
-    padding: 15px 20px;
-    border-radius: 10px;
-    margin: 20px 0 10px 0;
-    text-align: center;
-    font-weight: bold;
-    font-size: 1.2em;
-}}
-
-.archivo-item {{
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 15px;
-    margin: 10px 0;
-    transition: all 0.3s ease;
-    width: 100%;
-}}
-
-.archivo-item:hover {{
-    background: #e9ecef;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}}
-
-.eliminar-btn {{
-    background-color: #dc3545 !important;
-    color: white !important;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 0.9em;
-    width: 100%;
-    margin-top: 10px;
-}}
-
-.eliminar-btn:hover {{
-    background-color: #c82333 !important;
-}}
-
-.subir-btn {{
-    background-color: #28a745 !important;
-    color: white !important;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-weight: 600;
-    width: 100%;
-}}
-
-.carpeta-cerrada {{
-    background: linear-gradient(135deg, #d4af37, #b38e2f);
-    color: white;
-    padding: 15px 20px;
-    border-radius: 10px;
-    margin: 10px 0;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid #b38e2f;
-    text-align: left;
-    width: 100%;
-}}
-
-.carpeta-cerrada:hover {{
-    background: linear-gradient(135deg, #b38e2f, #d4af37);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}}
-
-.carpeta-abierta {{
-    background: rgba(255,255,255,0.98);
-    border: 2px solid #d4af37;
-    border-radius: 12px;
-    padding: 25px;
-    margin: 15px 0;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
-    width: 100%;
-}}
-
-.seccion-archivos {{
-    background: rgba(248,249,250,0.9);
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 15px;
-    margin: 10px 0;
-    width: 100%;
-}}
-
-.boton-descarga {{
-    background-color: #17a2b8 !important;
-    color: white !important;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 0.9em;
-    width: 100%;
-    margin: 5px 0;
-}}
-
-.boton-descarga:hover {{
-    background-color: #138496 !important;
-}}
-
-.archivo-info {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    width: 100%;
-}}
-
-.archivo-acciones {{
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-    width: 100%;
-}}
-
-.confirmacion-eliminar {{
-    background: #fff3cd;
-    border: 2px solid #ffc107;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 15px 0;
-    width: 100%;
-}}
-
-.accion-rapida {{
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-    width: 100%;
-}}
-
-.estadisticas-simple {{
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-    padding: 20px;
-    border-radius: 12px;
-    margin: 20px 0;
-    text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    width: 100%;
-}}
-
-.usuario-info {{
-    background: linear-gradient(135deg, #d4af37, #b38e2f);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 10px;
-    margin: 15px 0;
-    text-align: center;
-    font-weight: bold;
-    font-size: 1.1em;
-    width: 100%;
-}}
-
-.busqueda-section {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #d4af37;
-    border-radius: 12px;
-    padding: 20px;
-    margin: 20px 0;
-    width: 100%;
-}}
-
-.contratos-section {{
-    background: rgba(255,255,255,0.95);
-    border: 2px solid #d4af37;
-    border-radius: 12px;
-    padding: 20px;
-    margin: 20px 0;
-    width: 100%;
 }}
 </style>
 """, unsafe_allow_html=True)

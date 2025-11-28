@@ -42,8 +42,84 @@ if 'datos_contrato' not in st.session_state:
         'scroll_to_bottom': False
     })
 
-    # ==============================
-#  ESTILOS MEJORADOS - ANCHO COMPLETO
+# === FUNCIONES ===
+def detectar_anexos_robusta(texto):
+    texto_upper = texto.upper()
+    anexos_detectados = []
+    
+    patron_principal = r'ANEXO\s+[“”"\'´`]+\s*([A-Z0-9\-]+)\s*[“”"\'´`]+'
+    
+    matches_principal = re.findall(patron_principal, texto_upper)
+    for match in matches_principal:
+        anexo = match.strip()
+        if anexo and anexo not in anexos_detectados:
+            anexos_detectados.append(anexo)
+    
+    return sorted(list(set(anexos_detectados)))
+
+def preparar_archivos_para_bd(uploaded_file):
+    return {'principal': uploaded_file}
+
+def guardar_contrato_bd(archivos_data, datos_contrato):
+    try:
+        manager = get_db_manager()
+        if not manager:
+            st.error("❌ Error de conexión")
+            return False
+        
+        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_contrato)
+        
+        if contrato_id:
+            st.success("✅ Contrato guardado exitosamente")
+            return True
+        else:
+            st.error("❌ No se pudo guardar el contrato")
+            return False
+            
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        return False
+
+def generar_excel_contrato():
+    d = st.session_state.get("datos_contrato")
+    if not d:
+        st.warning("⚠️ No hay datos para generar Excel.")
+        return False
+    
+    if not TEMPLATE_PATH.exists():
+        st.error("❌ No se encontró la plantilla Excel.")
+        return False
+    
+    try:
+        wb = load_excel(TEMPLATE_PATH)
+        sh = wb.active
+
+        sh["B6"] = d.get("area", "")
+        sh["B7"] = d.get("contratista", "")
+        sh["K7"] = d.get("contrato", "")
+        sh["B8"] = f"DESCRIPCIÓN DEL CONTRATO: {d.get('objeto', '')}"
+        sh["C13"] = d.get("monto", "")
+        sh["F13"] = d.get("plazo", "")
+
+        anexos = d.get("anexos", [])
+        for idx, anexo in enumerate(anexos):
+            if idx < 31:
+                sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        st.session_state["excel_generado"] = buffer.getvalue()
+        st.session_state["excel_filename"] = f"CEDULA_CONTRATO_{timestamp()}.xlsx"
+        
+        return True
+    except Exception as e:
+        st.error(f"❌ Error al generar Excel: {e}")
+        return False
+
+# ==============================
+#  ESTILOS - Copia EXACTA del estilo LOGIN, contenedor único al 85%
 # ==============================
 st.markdown(f"""
 <style>
@@ -60,28 +136,27 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color:white !important; }}
 
-/* CONTENEDOR PRINCIPAL - MODIFICADO A 85% */
-.main-container {{
+/* CONTENEDOR PRINCIPAL - estilo LOGIN aplicado a todo el contenido (85%) */
+.main-login-container {{
     background: rgba(255,255,255,0.95);
     border: 3px solid #d4af37;
     border-radius: 20px;
     box-shadow: 0 18px 45px rgba(0,0,0,0.22);
-    padding: 30px 40px;
-
-    /* === AJUSTE SOLICITADO === */
+    padding: 40px 50px;
     width: 85%;
     max-width: 85vw;
-
-    margin: 20px auto;
+    margin: 30px auto;
+    backdrop-filter: blur(6px);
 }}
 
+/* FORMULARIO INTERNO con el mismo look que LOGIN (si hay formularios internos) */
 div[data-testid="stForm"] {{
     background: rgba(255, 255, 255, 0.85);
     border: 3px solid #d4af37;
     border-radius: 20px;
     box-shadow: 0 15px 40px rgba(0,0,0,0.25);
     backdrop-filter: blur(15px);
-    padding: 60px 50px;
+    padding: 40px 45px;
     width: 85%;
     max-width: 900px;
     margin: 20px auto;
@@ -120,6 +195,7 @@ div.stButton > button:first-child:hover {{
     color: white;
 }}
 
+/* Estilos para las secciones internas */
 .resultado-container {{
     background: rgba(255,255,255,0.95);
     border: 2px solid #d4af37;
@@ -358,108 +434,38 @@ div.stButton > button:first-child:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# === FUNCIONES ===
-def detectar_anexos_robusta(texto):
-    texto_upper = texto.upper()
-    anexos_detectados = []
-    
-    patron_principal = r'ANEXO\s+[“”"\'´`]+\s*([A-Z0-9\-]+)\s*[“”"\'´`]+'
-    
-    matches_principal = re.findall(patron_principal, texto_upper)
-    for match in matches_principal:
-        anexo = match.strip()
-        if anexo and anexo not in anexos_detectados:
-            anexos_detectados.append(anexo)
-    
-    return sorted(list(set(anexos_detectados)))
-
-def preparar_archivos_para_bd(uploaded_file):
-    return {'principal': uploaded_file}
-
-def guardar_contrato_bd(archivos_data, datos_contrato):
-    try:
-        manager = get_db_manager()
-        if not manager:
-            st.error("❌ Error de conexión")
-            return False
-        
-        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_contrato)
-        
-        if contrato_id:
-            st.success("✅ Contrato guardado exitosamente")
-            return True
-        else:
-            st.error("❌ No se pudo guardar el contrato")
-            return False
-            
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        return False
-
-def generar_excel_contrato():
-    d = st.session_state.get("datos_contrato")
-    if not d:
-        st.warning("⚠️ No hay datos para generar Excel.")
-        return False
-    
-    if not TEMPLATE_PATH.exists():
-        st.error("❌ No se encontró la plantilla Excel.")
-        return False
-    
-    try:
-        wb = load_excel(TEMPLATE_PATH)
-        sh = wb.active
-
-        sh["B6"] = d.get("area", "")
-        sh["B7"] = d.get("contratista", "")
-        sh["K7"] = d.get("contrato", "")
-        sh["B8"] = f"DESCRIPCIÓN DEL CONTRATO: {d.get('objeto', '')}"
-        sh["C13"] = d.get("monto", "")
-        sh["F13"] = d.get("plazo", "")
-
-        anexos = d.get("anexos", [])
-        for idx, anexo in enumerate(anexos):
-            if idx < 31:
-                sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
-
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-
-        st.session_state["excel_generado"] = buffer.getvalue()
-        st.session_state["excel_filename"] = f"CEDULA_CONTRATO_{timestamp()}.xlsx"
-        
-        return True
-    except Exception as e:
-        st.error(f"❌ Error al generar Excel: {e}")
-        return False
-
-
 # === BARRA LATERAL SIMPLIFICADA ===
 with st.sidebar:
     st.markdown("### 🔐 Sistema PEMEX")
     st.markdown("---")
     st.markdown("### 👤 Usuario")
+    # MOSTRAR EL NOMBRE COMPLETO, NO EL USUARIO
     st.success(f"**JACKELINE MARTINEZ SALAS**")
     st.markdown("---")
     st.markdown("*Sistema de Gestión de Contratos*")
 
 # ==================================================
-#  INTERFAZ PRINCIPAL - MEJORADA
+#  INTERFAZ PRINCIPAL - CONTENEDOR ÚNICO ESTILO LOGIN (85%)
 # ==================================================
-st.markdown("<div class='main-container'>", unsafe_allow_html=True)
+st.markdown("<div class='main-login-container'>", unsafe_allow_html=True)
 
+# Logo y título
 if logo_base64:
     st.markdown(
-        f"<div style='text-align:center; margin-bottom: 20px;'><img src='data:image/jpeg;base64,{logo_base64}' width='180'></div>",
+        f"<div style='text-align:center; margin-bottom: 10px;'><img src='data:image/jpeg;base64,{logo_base64}' width='200'></div>",
         unsafe_allow_html=True
     )
 
-st.markdown("<h1 style='text-align:center; color: #6b0012; margin-bottom: 10px;'>PROCESAMIENTO DE CONTRATOS PEMEX</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center; color: #666; margin-bottom: 30px;'>Sistema de carga, procesamiento y gestión de contratos</p>", unsafe_allow_html=True)
+# TÍTULO
+st.markdown("<h1 style='text-align:center; color: #6b0012; margin-bottom: 6px;'>PROCESAMIENTO DE CONTRATOS PEMEX</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color: #666; margin-bottom: 18px;'>Sistema de carga, procesamiento y gestión de contratos</p>", unsafe_allow_html=True)
+
+# Información del usuario - NOMBRE COMPLETO
 st.markdown(f"<div class='usuario-info'>👤 Usuario: JACKELINE MARTINEZ SALAS</div>", unsafe_allow_html=True)
 
-# FORMULARIO
+# ==================================================
+#  FORMULARIO DE PROCESAMIENTO
+# ==================================================
 st.markdown("<div class='procesamiento-section'>", unsafe_allow_html=True)
 st.markdown("### 📤 Carga y Procesamiento de Contratos")
 
@@ -483,17 +489,22 @@ with st.form("form_contratos"):
         plazo = st.text_input("Plazo (días):", datos.get("plazo",""), placeholder="Ej: 30, 60, 90...")
         objeto = st.text_area("Descripción del contrato:", datos.get("objeto",""), height=100, placeholder="Descripción detallada del objeto del contrato...")
 
+    # Guardar datos editados
     datos_editados = {
         "area": area, "contrato": contrato, "contratista": contratista,
         "monto": monto, "plazo": plazo, "objeto": objeto, "anexos": st.session_state.get("anexos_detectados", [])
     }
     st.session_state["datos_contrato"] = datos_editados
 
+    # ==================================================
+    #  ACCIONES DEL FORMULARIO
+    # ==================================================
     st.markdown("<div class='acciones-section'>", unsafe_allow_html=True)
     st.markdown("#### ⚡ Acciones de Procesamiento")
-
+    
+    # Punto de scroll automático
     st.markdown('<div class="scroll-target" id="acciones-botones"></div>', unsafe_allow_html=True)
-
+    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         procesar = st.form_submit_button("🚀 Procesar PDF", use_container_width=True)
@@ -505,6 +516,7 @@ with st.form("form_contratos"):
         revisar_ocr = st.form_submit_button("🔍 Ver Texto OCR", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # PROCESAMIENTO
     if procesar:
         if not uploaded_file:
             st.warning("⚠️ Sube un archivo PDF antes de procesar.")
@@ -522,9 +534,11 @@ with st.form("form_contratos"):
                 else:
                     datos_extraidos = extract_contract_data(texto) or {}
                     
+                    # Extracción de plazo
                     plazo_match = re.search(r"(\d{1,4})\s*d[ií]as", texto, re.IGNORECASE)
                     datos_extraidos["plazo"] = plazo_match.group(1) if plazo_match else ""
                     
+                    # Detección de anexos
                     anexos_detectados = detectar_anexos_robusta(texto)
                     st.session_state["anexos_detectados"] = anexos_detectados
                     datos_extraidos["anexos"] = anexos_detectados
@@ -534,6 +548,7 @@ with st.form("form_contratos"):
                     st.success("✅ Procesamiento completado exitosamente")
                     st.rerun()
 
+    # GUARDAR EN BASE DE DATOS
     if guardar:
         if not st.session_state.get("datos_contrato"):
             st.warning("⚠️ No hay datos para guardar.")
@@ -548,10 +563,12 @@ with st.form("form_contratos"):
                     st.balloons()
                     st.success("🎉 ¡Contrato guardado exitosamente en el sistema!")
 
+    # GENERAR EXCEL
     if generar_excel_btn:
         if generar_excel_contrato():
             st.success("✅ Archivo Excel generado exitosamente!")
 
+    # REVISAR OCR
     if revisar_ocr:
         texto = st.session_state.get("texto_extraido","")
         if not texto:
@@ -564,8 +581,11 @@ with st.form("form_contratos"):
             st.info(f"📄 **Total de caracteres extraídos:** {len(texto)}")
             st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre de procesamiento-section
 
+# ==================================================
+#  ANEXOS DETECTADOS
+# ==================================================
 anexos_detectados = st.session_state.get("anexos_detectados", [])
 if anexos_detectados:
     st.markdown("<div class='anexos-section'>", unsafe_allow_html=True)
@@ -577,6 +597,9 @@ if anexos_detectados:
     
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ==================================================
+#  DESCARGA DE EXCEL
+# ==================================================
 if st.session_state.get("excel_generado"):
     st.markdown("<div class='excel-section'>", unsafe_allow_html=True)
     st.markdown("#### 📊 Cédula Libro Blanco Generada")
@@ -591,8 +614,12 @@ if st.session_state.get("excel_generado"):
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ==================================================
+#  SCROLL AUTOMÁTICO
+# ==================================================
 if st.session_state.get('scroll_to_bottom', False):
     st.session_state.scroll_to_bottom = False
+    # JavaScript para scroll automático
     js = """
     <script>
         setTimeout(function() {
@@ -605,6 +632,9 @@ if st.session_state.get('scroll_to_bottom', False):
     """
     st.components.v1.html(js, height=0, width=0)
 
+# ==================================================
+#  PIE DE PÁGINA
+# ==================================================
 st.markdown("---")
 st.markdown(
     """
@@ -616,4 +646,4 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)  # Cierre del main-login-container
