@@ -5,19 +5,26 @@ import base64
 import re
 import io
 import os
+import json
+import warnings
+
 from core.database import get_db_manager
 from core.config import UPLOAD_DIR, TEMPLATE_PATH, timestamp
 from core.ocr_utils import pdf_to_text
 from core.text_processing import extract_contract_data
 from core.excel_utils import load_excel
+from hashlib import sha256
+from core.config import OUTPUT_DIR
+from pathlib import Path
+OUTPUT_DIR = Path("output")
+from core.excel_utils import save_excel, load_excel
 
-# === VERIFICAR SESIÓN ===
-if "autenticado" not in st.session_state or not st.session_state.autenticado:
-    st.error("Acceso denegado. Inicie sesión primero.")
-    st.switch_page("INICIO.py")
+
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
+
 
 # === CONFIGURACIÓN DE RUTAS ===
-assets_dir = Path(__file__).parent.parent / "assets"
+assets_dir = Path(__file__).parent / "assets"
 fondo_path = assets_dir / "fondo.jpg"
 logo_path = assets_dir / "logo.jpg"
 
@@ -31,6 +38,260 @@ def get_base64_image(path: Path):
 fondo_base64 = get_base64_image(fondo_path)
 logo_base64 = get_base64_image(logo_path)
 
+# === Página en modo wide ===
+st.set_page_config(layout="wide")
+
+# === SESSION STATE ===
+for key, default in {
+    "autenticado": False,
+    "usuario": "",
+    "nombre": "",
+    "datos_contrato": {},
+    "ultimo_pdf_temp": "",
+    "ultimo_guardado": "",
+    "texto_extraido": "",
+    "anexos_detectados": [],
+    "procesamiento_completado": False,
+    "excel_generado": None,
+    "excel_filename": ""
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# === CARGAR USUARIOS ===
+def cargar_usuarios():
+    ruta = Path("usuarios.json")
+    if not ruta.exists():
+        st.error("No se encontró el archivo usuarios.json")
+        st.stop()
+    with open(ruta, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    usuarios = {}
+    for u in data:
+        usuario = u.get("usuario", "").strip().upper()
+        password_raw = u.get("password", "") or ""
+        password_hash = sha256(password_raw.encode()).hexdigest()
+        usuarios[usuario] = {
+            "password_hash": password_hash,
+            "nombre": u.get("nombre", "").strip().upper()
+        }
+    return usuarios
+
+USERS = cargar_usuarios()
+
+# === AUTENTICACIÓN ===
+def autenticar(usuario: str, password: str):
+    if not usuario:
+        return False, None
+    user_data = USERS.get(usuario.strip().upper())
+    if not user_data:
+        return False, None
+    hashed = sha256(password.encode()).hexdigest()
+    if user_data["password_hash"] == hashed:
+        return True, user_data["nombre"]
+    return False, None
+
+# === DETECCIÓN MEJORADA DE ANEXOS ===
+def detectar_anexos_robusta(texto):
+    """
+    Detección robusta de anexos que captura específicamente los códigos entre comillas
+    y evita falsos positivos como 'ANEXO' o palabras incompletas
+    """
+    # Convertir a mayúsculas para consistencia
+    texto_upper = texto.upper()
+    
+    anexos_detectados = []
+    
+    # Patrón principal: busca "Anexo" seguido de comillas y contenido entre ellas
+    patron_principal = r'ANEXO\s+[“”"\'´`]+\s*([A-Z0-9\-]+)\s*[“”"\'´`]+'
+    
+    # Patrón secundario: para casos sin comillas pero con formato claro
+    patron_secundario = r'ANEXO\s+([A-Z]{1,3}(?:-[A-Z0-9]{1,3})?)(?:\s|\.|\,|\:|$)'
+    
+    # Patrón para anexos conocidos específicos
+    anexos_conocidos = ["A", "AP", "B", "B-1", "BDE", "C", "CN", "DT-9", "E", "F", 
+                       "FORMA", "GARANTÍAS", "GNR", "I", "II", "IV", "MMRDD", "O", 
+                       "PACMA", "PUE", "SSPA"]
+    
+    # Buscar con patrón principal (comillas)
+    matches_principal = re.findall(patron_principal, texto_upper)
+    for match in matches_principal:
+        anexo = match.strip()
+        if anexo and anexo not in anexos_detectados:
+            anexos_detectados.append(anexo)
+    
+    # Buscar con patrón secundario (sin comillas pero formato claro)
+    matches_secundario = re.findall(patron_secundario, texto_upper)
+    for match in matches_secundario:
+        anexo = match.strip()
+        # Validar que sea un anexo válido (esté en la lista de conocidos o tenga formato válido)
+        if (anexo in anexos_conocidos or 
+            re.match(r'^[A-Z]{1,3}(?:-[A-Z0-9]{1,3})?$', anexo)) and \
+           anexo not in anexos_detectados:
+            anexos_detectados.append(anexo)
+    
+    # Buscar específicamente anexos conocidos que puedan aparecer sin formato estándar
+    for anexo_conocido in anexos_conocidos:
+        # Patrón que busca el anexo conocido con contexto de "ANEXO"
+        patron_especifico = rf'ANEXO\s+(?:[“]\"\'´`]*\s*)?{re.escape(anexo_conocido)}(?:\s*[“”"\'´`])?(?:\s|\.|\,|\:|$)'
+        if re.search(patron_especifico, texto_upper) and anexo_conocido not in anexos_detectados:
+            anexos_detectados.append(anexo_conocido)
+    
+    # Eliminar posibles duplicados y ordenar
+    anexos_detectados = sorted(list(set(anexos_detectados)))
+    
+    return anexos_detectados
+
+# === FUNCIONES PARA POSTGRESQL ===
+def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
+    """
+    Guarda el contrato automáticamente
+    """
+    try:
+        manager = get_db_manager()
+        if not manager:
+            st.warning("⚠️ No se pudo conectar")
+            return False
+        
+        # Preparar datos para PostgreSQL
+        datos_postgresql = {
+            'contrato': datos_contrato.get('contrato', ''),
+            'contratista': datos_contrato.get('contratista', ''),
+            'monto': datos_contrato.get('monto', ''),
+            'plazo': datos_contrato.get('plazo', ''),
+            'objeto': datos_contrato.get('objeto', ''),
+            'anexos': datos_contrato.get('anexos', []),
+            'area': datos_contrato.get('area', 'SUBDIRECCIÓN DE PRODUCCIÓN REGIÓN NORTE GERENCIA DE MANTENIMIENTO CONFIABILIDAD Y CONSTRUCCIÓN')
+        }
+        
+        # Guardar en PostgreSQL
+        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_postgresql, usuario)
+        
+        if contrato_id:
+            st.success(f"🗄️ **Contrato guardado** (ID: {contrato_id})")
+            return True
+        else:
+            st.warning("⚠️ No se pudo guardar ")
+            return False
+            
+    except Exception as e:
+        st.warning(f"⚠️ Error guardando: {str(e)}")
+        st.info("📁 El contrato se guardó localmente, pero hubo un problema con la base de datos")
+        return False
+
+def preparar_archivos_para_postgresql(contrato_path, uploaded_file, datos_contrato):
+    """
+    Prepara todos los archivos del contrato para PostgreSQL
+    """
+    archivos_data = {
+        'principal': None,
+        'anexos': [],
+        'cedulas': [],
+        'soportes': []
+    }
+    
+    try:
+        # 1. Archivo principal (PDF del contrato)
+        if uploaded_file:
+            # Usar el archivo subido directamente
+            archivos_data['principal'] = uploaded_file
+        
+        # 2. Cédulas (Excel generado)
+        cedulas_path = contrato_path / "CEDULAS"
+        if cedulas_path.exists():
+            for cedula_file in cedulas_path.glob("*.xlsx"):
+                if cedula_file.is_file():
+                    with open(cedulas_path / cedula_file.name, "rb") as f:
+                        file_bytes = f.read()
+                        # Crear objeto similar a UploadedFile
+                        archivo_cedula = io.BytesIO(file_bytes)
+                        archivo_cedula.name = cedula_file.name
+                        archivos_data['cedulas'].append(archivo_cedula)
+        
+        # 3. Anexos detectados (crear archivos virtuales para los anexos detectados)
+        anexos_detectados = datos_contrato.get('anexos', [])
+        for anexo in anexos_detectados:
+            # Crear un archivo virtual con la información del anexo
+            anexo_info = f"ANEXO {anexo} - Detectado automáticamente del contrato"
+            archivo_anexo = io.BytesIO(anexo_info.encode('utf-8'))
+            archivo_anexo.name = f"ANEXO_{anexo}.txt"
+            archivos_data['anexos'].append(archivo_anexo)
+        
+        # 4. Soporte físico (el PDF original)
+        if uploaded_file:
+            # Usar el mismo archivo para soportes
+            archivos_data['soportes'].append(uploaded_file)
+        
+        return archivos_data
+        
+    except Exception as e:
+        st.error(f"❌ Error preparando archivos para PostgreSQL: {str(e)}")
+        return None
+
+# === FUNCIÓN PARA GENERAR EXCEL ===
+def generar_excel_contrato():
+    """Genera el archivo Excel y lo prepara para descarga"""
+    d = st.session_state.get("datos_contrato")
+    if not d:
+        st.warning("⚠️ No hay datos para generar Excel.")
+        return False
+    
+    if not TEMPLATE_PATH.exists():
+        st.error("❌ No se encontró la plantilla Excel.")
+        return False
+    
+    try:
+        wb = load_excel(TEMPLATE_PATH)
+        sh = wb.active
+
+        # Mapeo de datos al Excel
+        sh["B6"] = d.get("area", "")
+        sh["B7"] = d.get("contratista", "")
+        sh["K7"] = d.get("contrato", "")
+        sh["B8"] = f"DESCRIPCIÓN DEL CONTRATO: {d.get('objeto', '')}"
+        sh["C13"] = d.get("monto", "")
+        sh["F13"] = d.get("plazo", "")
+
+        # Inserción de anexos en celdas B29 a B59
+        anexos = d.get("anexos", [])
+        for idx, anexo in enumerate(anexos):
+            if idx < 31:  # B29 a B59 = 31 celdas
+                sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
+
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        out = OUTPUT_DIR / f"CEDULA_LIBRO_BLANCO_{timestamp()}.xlsx"
+        save_excel(wb, out)
+
+        # Guardar el archivo en session state para descarga
+        with open(out, "rb") as f:
+            st.session_state["excel_generado"] = f.read()
+        st.session_state["excel_filename"] = out.name
+        
+        # === GUARDAR COPIA EN CARPETA LOCAL DEL CONTRATO ===
+        try:
+            # Buscar la última ruta de contrato guardado
+            owner = st.session_state.get("nombre", "ANONIMO")
+            numero_contrato = d.get("contrato", "")
+            if owner and numero_contrato:
+                # Buscar en la carpeta del usuario el contrato más reciente que coincida
+                user_contratos_dir = Path("data") / owner.upper() / "CONTRATOS"
+                if user_contratos_dir.exists():
+                    # Buscar carpeta que contenga el número de contrato
+                    for carpeta in user_contratos_dir.iterdir():
+                        if carpeta.is_dir() and numero_contrato in carpeta.name:
+                            cedulas_dir = carpeta / "CEDULAS"
+                            cedulas_dir.mkdir(exist_ok=True)
+                            # Guardar copia del Excel en CEDULAS
+                            with open(cedulas_dir / out.name, "wb") as f:
+                                f.write(st.session_state["excel_generado"])
+                            break
+        except Exception as e:
+            st.warning(f"⚠️ No se pudo guardar copia del Excel en carpeta local: {e}")
+        
+        return True
+    except Exception as e:
+        st.error(f"❌ Error al generar Excel: {e}")
+        return False
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -129,109 +390,24 @@ div.stButton > button:first-child:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# === INICIALIZAR ESTADO ===
-if 'datos_contrato' not in st.session_state:
-    st.session_state.update({
-        'datos_contrato': {},
-        'texto_extraido': "",
-        'anexos_detectados': [],
-        'excel_generado': None,
-        'excel_filename': "",
-        'scroll_to_bottom': False
-    })
-
-# === FUNCIONES ===
-def detectar_anexos_robusta(texto):
-    texto_upper = texto.upper()
-    anexos_detectados = []
-    
-    patron_principal = r'ANEXO\s+[“”"\'´`]+\s*([A-Z0-9\-]+)\s*[“”"\'´`]+'
-    
-    matches_principal = re.findall(patron_principal, texto_upper)
-    for match in matches_principal:
-        anexo = match.strip()
-        if anexo and anexo not in anexos_detectados:
-            anexos_detectados.append(anexo)
-    
-    return sorted(list(set(anexos_detectados)))
-
-def preparar_archivos_para_bd(uploaded_file):
-    return {'principal': uploaded_file}
-
-def guardar_contrato_bd(archivos_data, datos_contrato):
-    try:
-        manager = get_db_manager()
-        if not manager:
-            st.error("❌ Error de conexión")
-            return False
-        
-        contrato_id = manager.guardar_contrato_completo(archivos_data, datos_contrato)
-        
-        if contrato_id:
-            st.success("✅ Contrato guardado exitosamente")
-            return True
-        else:
-            st.error("❌ No se pudo guardar el contrato")
-            return False
-            
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        return False
-
-def generar_excel_contrato():
-    d = st.session_state.get("datos_contrato")
-    if not d:
-        st.warning("⚠️ No hay datos para generar Excel.")
-        return False
-    
-    if not TEMPLATE_PATH.exists():
-        st.error("❌ No se encontró la plantilla Excel.")
-        return False
-    
-    try:
-        wb = load_excel(TEMPLATE_PATH)
-        sh = wb.active
-
-        sh["B6"] = d.get("area", "")
-        sh["B7"] = d.get("contratista", "")
-        sh["K7"] = d.get("contrato", "")
-        sh["B8"] = f"DESCRIPCIÓN DEL CONTRATO: {d.get('objeto', '')}"
-        sh["C13"] = d.get("monto", "")
-        sh["F13"] = d.get("plazo", "")
-
-        anexos = d.get("anexos", [])
-        for idx, anexo in enumerate(anexos):
-            if idx < 31:
-                sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
-
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-
-        st.session_state["excel_generado"] = buffer.getvalue()
-        st.session_state["excel_filename"] = f"CEDULA_CONTRATO_{timestamp()}.xlsx"
-        
-        return True
-    except Exception as e:
-        st.error(f"❌ Error al generar Excel: {e}")
-        return False
-
-
 # ==================================================
-#  FORMULARIO
+#  FORMULARIO PRINCIPAL (UN SOLO FORM)
 # ==================================================
-st.markdown("<div class='procesamiento-section'>", unsafe_allow_html=True)
-st.markdown("### 📤 Carga y Procesamiento de Contratos")
+with st.form("form_contratos", clear_on_submit=False):
 
-with st.form("form_contratos"):
-    st.markdown("#### 📄 Subir Contrato PDF")
-    uploaded_file = st.file_uploader("Selecciona el archivo PDF del contrato:", type=["pdf"], label_visibility="collapsed")
-    
-    st.markdown("---")
-    st.markdown("#### 📋 Información del Contrato")
-    
+    if logo_base64:
+        st.markdown(
+            f"<div style='text-align:center;'><img src='data:image/jpeg;base64,{logo_base64}' width='200'></div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<h2 style='text-align:center;'>SISTEMA DE PROCESAMIENTO DE CONTRATOS PEMEX</h2>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align:center;'>📘 CÉDULA LIBRO BLANCO</h4>", unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader("📤 Subir contrato PDF", type=["pdf"])
+
     datos = st.session_state.get("datos_contrato", {})
-    
+
     col1, col2 = st.columns(2, gap="large")
     with col1:
         area = st.text_input("Área:", datos.get("area",""))
@@ -241,7 +417,25 @@ with st.form("form_contratos"):
     with col2:
         monto = st.text_input("Monto del contrato:", datos.get("monto",""))
         plazo = st.text_input("Plazo (días):", datos.get("plazo",""))
-        objeto = st.text_area("Descripción del contrato:", datos.get("objeto",""), height=100)
+        objeto = st.text_area("Descripción del contrato:", datos.get("objeto",""), height=130)
+
+    # Sección de anexos detectados
+    st.markdown("---")
+    st.markdown("<div class='anexo-header'>📎 ANEXOS DETECTADOS</div>", unsafe_allow_html=True)
+    
+    anexos_detectados = st.session_state.get("anexos_detectados", [])
+    if anexos_detectados:
+        st.markdown("<div class='resultado-container'>", unsafe_allow_html=True)
+        st.success(f"✅ **{len(anexos_detectados)} ANEXOS IDENTIFICADOS:**")
+        
+        # Mostrar anexos en formato de lista ordenada
+        for i, anexo in enumerate(anexos_detectados, 1):
+            st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
+        
+        st.info(f"**Nota:** Los anexos se insertarán automáticamente en las celdas B29-B59 del Excel")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("ℹ️ **No se han detectado anexos.** Procesa un contrato para identificar anexos automáticamente.")
 
     datos_editados = {
         "area": area,
@@ -250,31 +444,34 @@ with st.form("form_contratos"):
         "monto": monto,
         "plazo": plazo,
         "objeto": objeto,
-        "anexos": st.session_state.get("anexos_detectados", [])
+        "anexos": anexos_detectados
     }
+
     st.session_state["datos_contrato"] = datos_editados
 
-    # ACCIONES
-    st.markdown("<div class='acciones-section'>", unsafe_allow_html=True)
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        procesar = st.form_submit_button("🚀 Procesar PDF", use_container_width=True)
-    with col2:
-        guardar = st.form_submit_button("💾 Guardar Contrato", use_container_width=True)
-    with col3:
-        generar_excel_btn = st.form_submit_button("📊 Generar Excel", use_container_width=True)
-    with col4:
-        revisar_ocr = st.form_submit_button("🔍 Ver Texto OCR", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("---")
 
-    # PROCESAR PDF
+    # Botones de acción
+    b1, b2, b3, b4 = st.columns(4)
+    with b1:
+        procesar = st.form_submit_button("🚀 Procesar contrato", use_container_width=True)
+    with b2:
+        guardar = st.form_submit_button("💾 Guardar contrato", use_container_width=True)
+    with b3:
+        generar_excel_btn = st.form_submit_button("📊 Generar Excel", use_container_width=True)
+    with b4:
+        revisar_ocr = st.form_submit_button("🔍 Revisar OCR", use_container_width=True)
+
+    # ========= PROCESAMIENTO DENTRO DEL FORM =========
     if procesar:
         if not uploaded_file:
-            st.warning("⚠️ Sube un archivo PDF antes de procesar.")
+            st.warning("⚠️ Sube un PDF antes de procesar.")
         else:
-            with st.spinner("Procesando PDF con OCR..."):
-                temp_path = UPLOAD_DIR / uploaded_file.name
-                temp_path.write_bytes(uploaded_file.getbuffer())
+            with st.spinner("🔄 Procesando OCR y extrayendo datos..."):
+                temp_path = Path(UPLOAD_DIR) / uploaded_file.name
+                temp_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(temp_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
                 texto = pdf_to_text(temp_path)
                 st.session_state["texto_extraido"] = texto
@@ -283,101 +480,157 @@ with st.form("form_contratos"):
                     st.error(f"❌ Error en OCR: {texto}")
                 else:
                     datos_extraidos = extract_contract_data(texto) or {}
-                    plazo_match = re.search(r"(\d{{1,4}})\s*d[ií]as", texto, re.IGNORECASE)
-                    datos_extraidos["plazo"] = plazo_match.group(1) if plazo_match else ""
 
+                    # Limpieza de campos no requeridos
+                    datos_extraidos.pop("partida", None)
+                    datos_extraidos.pop("observaciones", None)
+
+                    # Extracción mejorada de plazo
+                    plazo_regex = re.search(
+                        r"(?:plazo del contrato|plazo(?:\s+total)?|tendrá un plazo|plazo es de)\s*(?:de\s*)?(\d{1,4})\s*(?:d[ií]as?)",
+                        texto,
+                        flags=re.IGNORECASE
+                    )
+                    if plazo_regex:
+                        datos_extraidos["plazo"] = plazo_regex.group(1)
+                    else:
+                        plazo_alt = re.search(r"(\d{1,4})\s*d[ií]as", texto, flags=re.IGNORECASE)
+                        datos_extraidos["plazo"] = plazo_alt.group(1) if plazo_alt else ""
+
+                    # Detección ROBUSTA de anexos
                     anexos_detectados = detectar_anexos_robusta(texto)
                     st.session_state["anexos_detectados"] = anexos_detectados
                     datos_extraidos["anexos"] = anexos_detectados
 
                     st.session_state["datos_contrato"] = datos_extraidos
-                    st.session_state.scroll_to_bottom = True
-                    st.success("✅ Procesamiento completado")
+                    st.session_state["procesamiento_completado"] = True
+                    
+                    st.success("✅ Procesamiento completado exitosamente!")
                     st.rerun()
 
-    # GUARDAR BD
+    # ========= GUARDAR DENTRO DEL FORM =========
     if guardar:
         if not st.session_state.get("datos_contrato"):
             st.warning("⚠️ No hay datos para guardar.")
         else:
-            with st.spinner("Guardando contrato en la base de datos..."):
-                archivos_data = preparar_archivos_para_bd(uploaded_file)
-                exito_bd = guardar_contrato_bd(archivos_data, st.session_state["datos_contrato"])
-                if exito_bd:
-                    st.balloons()
+            d = st.session_state["datos_contrato"]
+            owner = st.session_state.get("nombre","ANONIMO")
+            
+            # === EXTRACCIÓN Y FORMATEO DEL NÚMERO DE CONTRATO ===
+            numero_contrato = d.get("contrato", "").strip()
+            
+            # Extraer solo dígitos del número de contrato
+            solo_digitos = re.sub(r'\D', '', numero_contrato)
+            
+            # Verificar si comienza con 64 y tiene al menos 9 dígitos (64 + 7)
+            if solo_digitos.startswith('64') and len(solo_digitos) >= 9:
+                # Tomar solo los primeros 9 dígitos (64 + 7)
+                numero_formateado = solo_digitos[:9]
+            else:
+                # Si no cumple el formato, usar el número original sin espacios
+                numero_formateado = numero_contrato.replace(" ", "_").upper() or "SIN_NUM"
+            
+            # === EXTRACCIÓN DE PALABRAS CLAVE ===
+            objeto_contrato = d.get("objeto", "").upper()
+            palabras_clave = []
+            
+            # Lista de palabras comunes a excluir
+            palabras_excluir = {"DE", "PARA", "Y", "LOS", "LAS", "DEL", "EL", "LA", "EN", "CON", 
+                               "POR", "SIN", "AL", "SE", "SU", "SUS", "UN", "UNA", "UNOS", "UNAS",
+                               "ES", "SON", "QUE", "A", "O", "E", "I", "U", "ME", "TE", "LE", "NOS",
+                               "CONTRATO", "SERVICIO", "SUMINISTRO", "OBRA", "MANTENIMIENTO"}
+            
+            if objeto_contrato:
+                # Extraer palabras de 4 o más letras que no estén en la lista de exclusión
+                palabras = re.findall(r'\b[A-Z]{4,}\b', objeto_contrato)
+                for palabra in palabras:
+                    if (palabra not in palabras_excluir and 
+                        len(palabra) >= 4 and 
+                        palabra not in palabras_clave):
+                        palabras_clave.append(palabra)
+                
+                # Limitar a 3 palabras clave máximo para evitar nombres demasiado largos
+                palabras_clave = palabras_clave[:3]
+            
+            # Crear sufijo con palabras clave
+            sufijo_clave = "_" + "_".join(palabras_clave) if palabras_clave else ""
+            
+            # Crear UID con número de contrato formateado y palabras clave
+            uid = f"CONTRATO_{numero_formateado}{sufijo_clave}"
+            
+            base = Path("data") / owner.upper() / "CONTRATOS" / uid
+            for sub in ["CEDULAS","ANEXOS","SOPORTES FISICOS"]:
+                (base/sub).mkdir(parents=True, exist_ok=True)
 
-    # GENERAR EXCEL
+            # === GUARDADO LOCAL (CÓDIGO ORIGINAL) ===
+            if uploaded_file:
+                with open(base / "SOPORTES FISICOS" / uploaded_file.name, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+
+            # Guardar también las palabras clave en los metadatos
+            d["palabras_clave"] = palabras_clave
+            d["numero_contrato_formateado"] = numero_formateado
+            with open(base/"metadatos.json","w",encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=2)
+
+            mensaje_guardado = f"✅ **Contrato guardado LOCALMENTE en:** `{base}`"
+            if palabras_clave:
+                mensaje_guardado += f"\n🔑 **Palabras clave extraídas:** {', '.join(palabras_clave)}"
+            
+            st.success(mensaje_guardado)
+
+            # === GUARDADO AUTOMÁTICO EN POSTGRESQL ===
+            with st.spinner("🔄 Guardando en PostgreSQL..."):
+                archivos_data = preparar_archivos_para_postgresql(base, uploaded_file, d)
+                
+                if archivos_data:
+                    exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
+                    
+                    if exito_postgresql:
+                        st.balloons()
+                        st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN AMBOS SISTEMAS!**")
+                        st.info("📁 **Local:** Disponible en tu carpeta personal")
+                        st.info("🗄️ **PostgreSQL:** Disponible en la base de datos (hasta 4TB por archivo)")
+                    else:
+                        st.warning("⚠️ El contrato se guardó localmente, pero hubo problemas con PostgreSQL")
+                else:
+                    st.warning("⚠️ No se pudieron preparar los archivos para PostgreSQL")
+
+    # ========= GENERAR EXCEL DENTRO DEL FORM =========
     if generar_excel_btn:
         if generar_excel_contrato():
-            st.success("✅ Excel generado")
+            st.success("✅ Excel generado exitosamente! Revisa la sección de descarga abajo.")
+            st.rerun()
 
-    # OCR
+    # ========= REVISAR OCR DENTRO DEL FORM =========
     if revisar_ocr:
         texto = st.session_state.get("texto_extraido","")
         if not texto:
-            st.info("ℹ️ No hay texto OCR disponible.")
+            st.info("ℹ️ No hay OCR disponible. Procesa un contrato primero.")
         else:
-            st.markdown("<div class='ocr-container'>", unsafe_allow_html=True)
-            texto_preview = texto[:5000] + ("..." if len(texto) > 5000 else "")
-            st.text_area("Texto OCR", texto_preview, height=200)
+            st.markdown("<div class='resultado-container'>", unsafe_allow_html=True)
+            st.subheader("🔍 Texto Extraído por OCR")
+            st.text_area(
+                "Texto OCR completo", 
+                texto[:50000] + ("...[texto truncado para visualización]" if len(texto)>50000 else ""), 
+                height=30000,
+                key="ocr_text_area"
+            )
             st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
 
-# ==================================================
-#  ANEXOS DETECTADOS
-# ==================================================
-anexos_detectados = st.session_state.get("anexos_detectados", [])
-if anexos_detectados:
-    st.markdown("<div class='anexos-section'>", unsafe_allow_html=True)
-    st.success(f"Anexos encontrados: {len(anexos_detectados)}")
-    for anexo in anexos_detectados:
-        st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+#  SECCIÓN DE DESCARGA FUERA DEL FORM (por restricciones de Streamlit)
 
-# ==================================================
-#  DESCARGA DE EXCEL
-# ==================================================
 if st.session_state.get("excel_generado"):
-    st.markdown("<div class='excel-section'>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("<div class='descarga-container'>", unsafe_allow_html=True)
+    st.success("📊 **EXCEL GENERADO EXITOSAMENTE**")
+    
     st.download_button(
-        label="📥 Descargar Excel",
+        label="📥 DESCARGAR ARCHIVO EXCEL",
         data=st.session_state["excel_generado"],
         file_name=st.session_state["excel_filename"],
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
-
-# ==================================================
-#  SCROLL AUTOMÁTICO
-# ==================================================
-if st.session_state.get('scroll_to_bottom', False):
-    st.session_state.scroll_to_bottom = False
-    js = """
-    <script>
-        setTimeout(function() {
-            var element = document.getElementById('acciones-botones');
-            if (element) {
-                element.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        }, 120);
-    </script>
-    """
-    st.components.v1.html(js, height=0, width=0)
-
-# ==================================================
-# PIE DE PÁGINA
-# ==================================================
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align:center; margin-top:20px; padding:15px; background:rgba(255,255,255,0.8); border-radius:10px;'>
-        <strong>Sistema de Procesamiento de Contratos PEMEX</strong><br>
-        Carga • OCR • Anexos • Excel • Almacenamiento seguro
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-st.markdown("</div>", unsafe_allow_html=True)
