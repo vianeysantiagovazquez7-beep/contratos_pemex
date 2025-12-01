@@ -22,11 +22,11 @@ from core.excel_utils import save_excel, load_excel
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
 
-
-# === CONFIGURACIÓN DE RUTAS ===
-assets_dir = Path(__file__).parent / "assets"
-fondo_path = assets_dir / "fondo.jpg"
-logo_path = assets_dir / "logo.jpg"
+# --- Configuración de rutas ---
+BASE_DIR = Path("data")
+ASSETS_DIR = Path(__file__).parent.parent / "assets"
+FONDO = ASSETS_DIR / "fondo.jpg"
+LOGO = ASSETS_DIR / "logo.jpg"
 
 def get_base64_image(path: Path):
     try:
@@ -35,8 +35,9 @@ def get_base64_image(path: Path):
     except Exception:
         return ""
 
-fondo_base64 = get_base64_image(fondo_path)
-logo_base64 = get_base64_image(logo_path)
+fondo_base64 = get_base64_image(FONDO)
+logo_base64 = get_base64_image(LOGO)
+
 
 # === Página en modo wide ===
 st.set_page_config(layout="wide")
