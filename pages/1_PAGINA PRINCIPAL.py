@@ -144,14 +144,56 @@ def detectar_anexos_robusta(texto):
     return anexos_detectados
 
 # === FUNCIONES PARA POSTGRESQL ===
+def preparar_archivos_para_postgresql(uploaded_file, datos_contrato, excel_generado=None, excel_filename=None):
+    """
+    Prepara todos los archivos del contrato para PostgreSQL
+    """
+    archivos_data = {
+        'principal': None,
+        'anexos': [],
+        'cedulas': [],
+        'soportes': []
+    }
+    
+    try:
+        # 1. Archivo principal (PDF del contrato)
+        if uploaded_file:
+            archivos_data['principal'] = uploaded_file
+        
+        # 2. Cédulas (Excel generado)
+        if excel_generado and excel_filename:
+            # Crear objeto similar a UploadedFile desde los bytes del Excel
+            archivo_cedula = io.BytesIO(excel_generado)
+            archivo_cedula.name = excel_filename
+            archivos_data['cedulas'].append(archivo_cedula)
+        
+        # 3. Anexos detectados (crear archivos virtuales para los anexos detectados)
+        anexos_detectados = datos_contrato.get('anexos', [])
+        for anexo in anexos_detectados:
+            # Crear un archivo virtual con la información del anexo
+            anexo_info = f"ANEXO {anexo} - Detectado automáticamente del contrato"
+            archivo_anexo = io.BytesIO(anexo_info.encode('utf-8'))
+            archivo_anexo.name = f"ANEXO_{anexo}.txt"
+            archivos_data['anexos'].append(archivo_anexo)
+        
+        # 4. Soporte físico (el PDF original)
+        if uploaded_file:
+            archivos_data['soportes'].append(uploaded_file)
+        
+        return archivos_data
+        
+    except Exception as e:
+        st.error(f"❌ Error preparando archivos para PostgreSQL: {str(e)}")
+        return None
+
 def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
     """
-    Guarda el contrato automáticamente
+    Guarda el contrato automáticamente en PostgreSQL
     """
     try:
         manager = get_db_manager()
         if not manager:
-            st.warning("⚠️ No se pudo conectar")
+            st.warning("⚠️ No se pudo conectar a la base de datos")
             return False
         
         # Preparar datos para PostgreSQL
@@ -169,65 +211,15 @@ def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
         contrato_id = manager.guardar_contrato_completo(archivos_data, datos_postgresql, usuario)
         
         if contrato_id:
-            st.success(f"🗄️ **Contrato guardado** (ID: {contrato_id})")
+            st.success(f"✅ **Contrato guardado exitosamente en PostgreSQL** (ID: {contrato_id})")
             return True
         else:
-            st.warning("⚠️ No se pudo guardar ")
+            st.warning("⚠️ No se pudo guardar en la base de datos")
             return False
             
     except Exception as e:
-        st.warning(f"⚠️ Error guardando: {str(e)}")
-        st.info("📁 El contrato se guardó localmente, pero hubo un problema con la base de datos")
+        st.error(f"❌ Error guardando en PostgreSQL: {str(e)}")
         return False
-
-def preparar_archivos_para_postgresql(contrato_path, uploaded_file, datos_contrato):
-    """
-    Prepara todos los archivos del contrato para PostgreSQL
-    """
-    archivos_data = {
-        'principal': None,
-        'anexos': [],
-        'cedulas': [],
-        'soportes': []
-    }
-    
-    try:
-        # 1. Archivo principal (PDF del contrato)
-        if uploaded_file:
-            # Usar el archivo subido directamente
-            archivos_data['principal'] = uploaded_file
-        
-        # 2. Cédulas (Excel generado)
-        cedulas_path = contrato_path / "CEDULAS"
-        if cedulas_path.exists():
-            for cedula_file in cedulas_path.glob("*.xlsx"):
-                if cedula_file.is_file():
-                    with open(cedulas_path / cedula_file.name, "rb") as f:
-                        file_bytes = f.read()
-                        # Crear objeto similar a UploadedFile
-                        archivo_cedula = io.BytesIO(file_bytes)
-                        archivo_cedula.name = cedula_file.name
-                        archivos_data['cedulas'].append(archivo_cedula)
-        
-        # 3. Anexos detectados (crear archivos virtuales para los anexos detectados)
-        anexos_detectados = datos_contrato.get('anexos', [])
-        for anexo in anexos_detectados:
-            # Crear un archivo virtual con la información del anexo
-            anexo_info = f"ANEXO {anexo} - Detectado automáticamente del contrato"
-            archivo_anexo = io.BytesIO(anexo_info.encode('utf-8'))
-            archivo_anexo.name = f"ANEXO_{anexo}.txt"
-            archivos_data['anexos'].append(archivo_anexo)
-        
-        # 4. Soporte físico (el PDF original)
-        if uploaded_file:
-            # Usar el mismo archivo para soportes
-            archivos_data['soportes'].append(uploaded_file)
-        
-        return archivos_data
-        
-    except Exception as e:
-        st.error(f"❌ Error preparando archivos para PostgreSQL: {str(e)}")
-        return None
 
 # === FUNCIÓN PARA GENERAR EXCEL ===
 def generar_excel_contrato():
@@ -268,31 +260,11 @@ def generar_excel_contrato():
             st.session_state["excel_generado"] = f.read()
         st.session_state["excel_filename"] = out.name
         
-        # === GUARDAR COPIA EN CARPETA LOCAL DEL CONTRATO ===
-        try:
-            # Buscar la última ruta de contrato guardado
-            owner = st.session_state.get("nombre", "ANONIMO")
-            numero_contrato = d.get("contrato", "")
-            if owner and numero_contrato:
-                # Buscar en la carpeta del usuario el contrato más reciente que coincida
-                user_contratos_dir = Path("data") / owner.upper() / "CONTRATOS"
-                if user_contratos_dir.exists():
-                    # Buscar carpeta que contenga el número de contrato
-                    for carpeta in user_contratos_dir.iterdir():
-                        if carpeta.is_dir() and numero_contrato in carpeta.name:
-                            cedulas_dir = carpeta / "CEDULAS"
-                            cedulas_dir.mkdir(exist_ok=True)
-                            # Guardar copia del Excel en CEDULAS
-                            with open(cedulas_dir / out.name, "wb") as f:
-                                f.write(st.session_state["excel_generado"])
-                            break
-        except Exception as e:
-            st.warning(f"⚠️ No se pudo guardar copia del Excel en carpeta local: {e}")
-        
         return True
     except Exception as e:
         st.error(f"❌ Error al generar Excel: {e}")
         return False
+
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -517,85 +489,26 @@ with st.form("form_contratos", clear_on_submit=False):
             d = st.session_state["datos_contrato"]
             owner = st.session_state.get("nombre","ANONIMO")
             
-            # === EXTRACCIÓN Y FORMATEO DEL NÚMERO DE CONTRATO ===
-            numero_contrato = d.get("contrato", "").strip()
-            
-            # Extraer solo dígitos del número de contrato
-            solo_digitos = re.sub(r'\D', '', numero_contrato)
-            
-            # Verificar si comienza con 64 y tiene al menos 9 dígitos (64 + 7)
-            if solo_digitos.startswith('64') and len(solo_digitos) >= 9:
-                # Tomar solo los primeros 9 dígitos (64 + 7)
-                numero_formateado = solo_digitos[:9]
-            else:
-                # Si no cumple el formato, usar el número original sin espacios
-                numero_formateado = numero_contrato.replace(" ", "_").upper() or "SIN_NUM"
-            
-            # === EXTRACCIÓN DE PALABRAS CLAVE ===
-            objeto_contrato = d.get("objeto", "").upper()
-            palabras_clave = []
-            
-            # Lista de palabras comunes a excluir
-            palabras_excluir = {"DE", "PARA", "Y", "LOS", "LAS", "DEL", "EL", "LA", "EN", "CON", 
-                               "POR", "SIN", "AL", "SE", "SU", "SUS", "UN", "UNA", "UNOS", "UNAS",
-                               "ES", "SON", "QUE", "A", "O", "E", "I", "U", "ME", "TE", "LE", "NOS",
-                               "CONTRATO", "SERVICIO", "SUMINISTRO", "OBRA", "MANTENIMIENTO"}
-            
-            if objeto_contrato:
-                # Extraer palabras de 4 o más letras que no estén en la lista de exclusión
-                palabras = re.findall(r'\b[A-Z]{4,}\b', objeto_contrato)
-                for palabra in palabras:
-                    if (palabra not in palabras_excluir and 
-                        len(palabra) >= 4 and 
-                        palabra not in palabras_clave):
-                        palabras_clave.append(palabra)
-                
-                # Limitar a 3 palabras clave máximo para evitar nombres demasiado largos
-                palabras_clave = palabras_clave[:3]
-            
-            # Crear sufijo con palabras clave
-            sufijo_clave = "_" + "_".join(palabras_clave) if palabras_clave else ""
-            
-            # Crear UID con número de contrato formateado y palabras clave
-            uid = f"CONTRATO_{numero_formateado}{sufijo_clave}"
-            
-            base = Path("data") / owner.upper() / "CONTRATOS" / uid
-            for sub in ["CEDULAS","ANEXOS","SOPORTES FISICOS"]:
-                (base/sub).mkdir(parents=True, exist_ok=True)
-
-            # === GUARDADO LOCAL (CÓDIGO ORIGINAL) ===
-            if uploaded_file:
-                with open(base / "SOPORTES FISICOS" / uploaded_file.name, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-
-            # Guardar también las palabras clave en los metadatos
-            d["palabras_clave"] = palabras_clave
-            d["numero_contrato_formateado"] = numero_formateado
-            with open(base/"metadatos.json","w",encoding="utf-8") as f:
-                json.dump(d, f, ensure_ascii=False, indent=2)
-
-            mensaje_guardado = f"✅ **Contrato guardado LOCALMENTE en:** `{base}`"
-            if palabras_clave:
-                mensaje_guardado += f"\n🔑 **Palabras clave extraídas:** {', '.join(palabras_clave)}"
-            
-            st.success(mensaje_guardado)
-
-            # === GUARDADO AUTOMÁTICO EN POSTGRESQL ===
             with st.spinner("🔄 Guardando en PostgreSQL..."):
-                archivos_data = preparar_archivos_para_postgresql(base, uploaded_file, d)
+                # Preparar archivos para PostgreSQL
+                archivos_data = preparar_archivos_para_postgresql(
+                    uploaded_file, 
+                    d, 
+                    st.session_state.get("excel_generado"),
+                    st.session_state.get("excel_filename")
+                )
                 
                 if archivos_data:
                     exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
                     
                     if exito_postgresql:
                         st.balloons()
-                        st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN AMBOS SISTEMAS!**")
-                        st.info("📁 **Local:** Disponible en tu carpeta personal")
-                        st.info("🗄️ **PostgreSQL:** Disponible en la base de datos (hasta 4TB por archivo)")
+                        st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN POSTGRESQL!**")
+                        st.info("🗄️ **PostgreSQL:** Disponible en la base de datos centralizada")
                     else:
-                        st.warning("⚠️ El contrato se guardó localmente, pero hubo problemas con PostgreSQL")
+                        st.warning("⚠️ No se pudo guardar el contrato en la base de datos")
                 else:
-                    st.warning("⚠️ No se pudieron preparar los archivos para PostgreSQL")
+                    st.warning("⚠️ No se pudieron preparar los archivos para guardar")
 
     # ========= GENERAR EXCEL DENTRO DEL FORM =========
     if generar_excel_btn:
@@ -635,3 +548,4 @@ if st.session_state.get("excel_generado"):
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
+    

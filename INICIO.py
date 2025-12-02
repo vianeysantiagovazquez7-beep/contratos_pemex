@@ -56,6 +56,7 @@ def cargar_usuarios():
 
 USERS = cargar_usuarios()
 
+# === INTERFAZ DE LOGIN ===
 if not st.session_state.autenticado:
     st.markdown(
         f"""
@@ -102,12 +103,14 @@ if not st.session_state.autenticado:
     )
 
     st.markdown("<br><br><br>", unsafe_allow_html=True)
+
     with st.form("login_form", clear_on_submit=False):
         if logo_base64:
             st.markdown(
                 f"<div style='text-align:center;'><img src='data:image/jpeg;base64,{logo_base64}' width='230'></div>",
                 unsafe_allow_html=True,
             )
+
         st.markdown(
             "<h2 style='font-family:Montserrat;color:#1c1c1c;text-align:center;'>🔐 SISTEMA DE CONTRATOS PEMEX</h2>",
             unsafe_allow_html=True,
@@ -121,28 +124,39 @@ if not st.session_state.autenticado:
         login_password = st.text_input("🔒 CONTRASEÑA", type="password", key="login_password", placeholder="Ingresa tu contraseña")
         submit = st.form_submit_button("INICIAR SESIÓN", use_container_width=True)
 
+        # === AUTENTICACIÓN REAL ===
         if submit:
-            ok, nombre = (login_usuario, login_password)
-            if ok:
-                st.session_state.autenticado = True
-                st.session_state.usuario = login_usuario.strip().upper()
-                st.session_state.nombre = nombre or ""
-                st.success(f"Bienvenido {st.session_state.nombre}")
-                base_dir = Path("data") / st.session_state.nombre.upper()
-                if not base_dir.exists():
-                    for carpeta in [
-                        base_dir / "CONTRATOS",
-                        base_dir / "CONTRATOS" / "SOPORTES FISICOS",
-                        base_dir / "CONTRATOS" / "CEDULAS",
-                        base_dir / "CONTRATOS" / "ANEXOS",
-                        base_dir / "TEMP",
-                    ]:
-                        carpeta.mkdir(parents=True, exist_ok=True)
+            login_usuario_upper = login_usuario.strip().upper()
+            password_hash_input = sha256(login_password.encode()).hexdigest()
+
+            if login_usuario_upper in USERS:
+                if USERS[login_usuario_upper]["password_hash"] == password_hash_input:
+                    st.session_state.autenticado = True
+                    st.session_state.usuario = login_usuario_upper
+                    st.session_state.nombre = USERS[login_usuario_upper]["nombre"]
+
+                    st.success(f"Bienvenido {st.session_state.nombre}")
+
+                    # === NO SE ELIMINÓ TU SISTEMA DE CARPETAS ===
+                    base_dir = Path("data") / st.session_state.nombre.upper()
+                    if not base_dir.exists():
+                        for carpeta in [
+                            base_dir / "CONTRATOS",
+                            base_dir / "CONTRATOS" / "SOPORTES FISICOS",
+                            base_dir / "CONTRATOS" / "CEDULAS",
+                            base_dir / "CONTRATOS" / "ANEXOS",
+                            base_dir / "TEMP",
+                        ]:
+                            carpeta.mkdir(parents=True, exist_ok=True)
+                    else:
+                        st.info("🔹 Carpeta personal existente. Acceso concedido.")
                 else:
-                    st.info("🔹 Carpeta personal existente. Acceso concedido.")
+                    st.error("Contraseña incorrecta.")
             else:
-                st.error("Credenciales incorrectas.")
+                st.error("Usuario no encontrado.")
+
     st.stop()
+
 # Redirección si está autenticado
 if st.session_state.get("autenticado", False):
     st.switch_page("pages/1_PAGINA PRINCIPAL.py")
