@@ -29,6 +29,18 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 
 usuario = st.session_state.get("nombre", "").upper()
 
+# --- Mensaje informativo ---
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>💡 Información:</strong><br>
+        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
+        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 # ==============================
 #  ESTILOS IGUALES AL LOGIN (MANTENIENDO DISEÑO ORIGINAL)
 # ==============================
@@ -189,8 +201,32 @@ div.stButton > button:first-child:hover {{
 """, unsafe_allow_html=True)
 
 # ==================================================
-#  FUNCIONES AUXILIARES - MANTENIENDO LAS ORIGINALES
+#  FUNCIONES AUXILIARES CORREGIDAS
 # ==================================================
+def obtener_archivos_por_contrato(manager, contrato_id):
+    """✅ FUNCIÓN CORREGIDA: Obtener todos los archivos de un contrato"""
+    try:
+        # Usar el método existente en el manager
+        archivos = []
+        
+        # Obtener archivos por categoría usando métodos existentes
+        for categoria in ['CONTRATO', 'ANEXOS', 'CEDULAS', 'SOPORTES FISICOS']:
+            archivos_categoria = manager.obtener_archivos(contrato_id, categoria)
+            for archivo in archivos_categoria:
+                archivos.append({
+                    'id': archivo.id,
+                    'nombre_archivo': archivo.nombre_archivo,
+                    'categoria': categoria,
+                    'tamaño_bytes': archivo.tamaño_bytes,
+                    'contenido': archivo.contenido
+                })
+        
+        return archivos
+        
+    except Exception as e:
+        st.error(f"❌ Error obteniendo archivos: {str(e)}")
+        return []
+
 def mostrar_contrato_postgresql(manager, contrato_id):
     """✅ FUNCIÓN MEJORADA: Mostrar TODOS los archivos del contrato desde PostgreSQL"""
     try:
@@ -202,8 +238,8 @@ def mostrar_contrato_postgresql(manager, contrato_id):
         
         contrato_info = contratos[0]
         
-        # Obtener TODOS los archivos del contrato
-        archivos = manager.obtener_archivos_por_contrato(contrato_id)
+        # Obtener TODOS los archivos del contrato usando la función corregida
+        archivos = obtener_archivos_por_contrato(manager, contrato_id)
         
         if not archivos:
             st.error("❌ No se encontraron archivos para este contrato")
@@ -234,10 +270,10 @@ def mostrar_contrato_postgresql(manager, contrato_id):
         st.markdown("### 📎 Archivos del Contrato")
         
         secciones = [
+            ("📄 CONTRATO", "CONTRATO"),
             ("📋 CÉDULA", "CEDULAS"),
             ("📎 ANEXOS", "ANEXOS"), 
-            ("📂 SOPORTES", "SOPORTES FISICOS"),
-            ("📄 CONTRATO", "CONTRATO")
+            ("📂 SOPORTES", "SOPORTES FISICOS")
         ]
         
         archivos_encontrados = False
@@ -252,19 +288,20 @@ def mostrar_contrato_postgresql(manager, contrato_id):
                     
                     st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
                     
-                    col1, col2 = st.columns([3, 1])
+                    col1, col2, col3 = st.columns([3, 1, 1])
                     with col1:
                         st.markdown(f"**{archivo['nombre_archivo']}**")
                         st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
                     
                     with col2:
-                        # Botón de descarga - MISMOS ESTILOS
+                        # Botón de descarga individual - MISMOS ESTILOS
                         st.download_button(
                             label="📥 Descargar",
                             data=archivo['contenido'],
                             file_name=archivo['nombre_archivo'],
                             mime="application/octet-stream",
-                            key=f"download_{archivo['id']}"
+                            key=f"download_{archivo['id']}_{categoria}",
+                            use_container_width=True
                         )
                     
                     st.markdown("</div>", unsafe_allow_html=True)
@@ -363,14 +400,3 @@ with st.form("form_consulta", clear_on_submit=False):
     if actualizar or nueva_busqueda:
         st.rerun()
 
-# --- Mensaje informativo al final ---
-st.markdown(
-    """
-    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
-        <strong>💡 Información:</strong><br>
-        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
-        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
