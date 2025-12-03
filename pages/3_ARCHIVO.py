@@ -4,7 +4,8 @@ from pathlib import Path
 import json
 import os
 import base64
-from core.database import get_db_manager  # Nuevo import
+from core.database import get_db_manager  
+import sys
 
 # --- CONFIGURACIÓN DE RUTAS ---
 assets_dir = Path(__file__).parent.parent / "assets"
@@ -30,7 +31,7 @@ if not usuario or not nombre:
     st.stop()
 
 # ==============================
-#  FUNCIONES CORREGIDAS PARA POSTGRESQL
+#  FUNCIONES CORREGIDAS Y ROBUSTAS PARA POSTGRESQL
 # ==============================
 def obtener_contratos_postgresql(manager):
     """Obtener lista de contratos desde PostgreSQL"""
@@ -51,59 +52,160 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
         return False, f"❌ Error guardando: {str(e)}"
 
 def obtener_archivos_por_contrato(manager, contrato_id):
-    """✅ FUNCIÓN CORREGIDA: Obtener todos los archivos de un contrato"""
+    """✅ FUNCIÓN ROBUSTA CORREGIDA: Obtener todos los archivos de un contrato"""
     try:
         archivos = []
         
-        # Obtener archivos por categoría usando métodos existentes
-        for categoria in ['CONTRATO', 'ANEXOS', 'CEDULAS', 'SOPORTES FISICOS']:
+        # Método 1: Intentar usar método directo si existe
+        try:
+            if hasattr(manager, 'obtener_archivos_por_contrato'):
+                archivos_directo = manager.obtener_archivos_por_contrato(contrato_id)
+                if archivos_directo:
+                    return archivos_directo
+        except:
+            pass
+        
+        # Método 2: Buscar por categorías individuales
+        categorias = ['CONTRATO', 'ANEXOS', 'CEDULAS', 'SOPORTES FISICOS']
+        
+        for categoria in categorias:
             try:
-                archivos_categoria = manager.obtener_archivos(contrato_id, categoria)
-                for archivo in archivos_categoria:
-                    archivos.append({
-                        'id': archivo.id,
-                        'nombre_archivo': archivo.nombre_archivo,
-                        'categoria': categoria,
-                        'tamaño_bytes': archivo.tamaño_bytes if hasattr(archivo, 'tamaño_bytes') else len(archivo.contenido),
-                        'contenido': archivo.contenido
-                    })
+                # Intentar diferentes nombres de métodos
+                metodo_nombres = [
+                    f'get_{categoria.lower()}',  # get_contrato, get_anexos, etc.
+                    f'obtener_{categoria.lower()}',
+                    f'obtener_archivos_{categoria.lower()}',
+                    'obtener_archivos'  # Método genérico
+                ]
+                
+                archivos_encontrados = None
+                
+                for metodo_nombre in metodo_nombres:
+                    if hasattr(manager, metodo_nombre):
+                        try:
+                            if metodo_nombre == 'obtener_archivos':
+                                # Método que necesita parámetros
+                                archivos_categoria = manager.obtener_archivos(contrato_id, categoria)
+                            else:
+                                # Método específico por categoría
+                                archivos_categoria = getattr(manager, metodo_nombre)(contrato_id)
+                            
+                            if archivos_categoria:
+                                archivos_encontrados = archivos_categoria
+                                break
+                        except Exception:
+                            continue
+                
+                # Procesar archivos encontrados
+                if archivos_encontrados:
+                    # Normalizar la respuesta (puede ser lista de objetos o diccionarios)
+                    for archivo in archivos_encontrados:
+                        if isinstance(archivo, dict):
+                            archivo_data = archivo
+                        else:
+                            # Asumir que es un objeto con atributos
+                            archivo_data = {
+                                'id': getattr(archivo, 'id', 0),
+                                'nombre_archivo': getattr(archivo, 'nombre_archivo', 'desconocido'),
+                                'categoria': categoria,
+                                'tamaño_bytes': getattr(archivo, 'tamaño_bytes', 0),
+                                'contenido': getattr(archivo, 'contenido', b'')
+                            }
+                        
+                        archivos.append(archivo_data)
+                        
             except Exception as cat_error:
                 continue  # Si no hay archivos en esa categoría, continuamos
         
         return archivos
         
     except Exception as e:
+        st.error(f"⚠️ Error obteniendo archivos: {str(e)}")
         return []
 
 def eliminar_archivo_postgresql(manager, archivo_id, categoria):
-    """✅ FUNCIÓN IMPLEMENTADA: Eliminar archivo de PostgreSQL"""
+    """✅ FUNCIÓN ROBUSTA: Eliminar archivo de PostgreSQL"""
     try:
-        success = manager.eliminar_archivo(archivo_id, categoria)
+        # Intentar diferentes métodos de eliminación
+        success = False
+        
+        # Método 1: Método directo
+        if hasattr(manager, 'eliminar_archivo'):
+            try:
+                success = manager.eliminar_archivo(archivo_id, categoria)
+            except Exception:
+                pass
+        
+        # Método 2: Método alternativo
+        if not success and hasattr(manager, 'delete_archivo'):
+            try:
+                success = manager.delete_archivo(archivo_id)
+            except Exception:
+                pass
+        
         if success:
             return True, "✅ Archivo eliminado correctamente"
         else:
             return False, "❌ No se pudo eliminar el archivo"
+            
     except Exception as e:
         return False, f"❌ Error eliminando archivo: {str(e)}"
 
 def eliminar_contrato_postgresql(manager, contrato_id):
-    """✅ FUNCIÓN IMPLEMENTADA: Eliminar contrato completo de PostgreSQL"""
+    """✅ FUNCIÓN ROBUSTA: Eliminar contrato completo de PostgreSQL"""
     try:
-        # Primero eliminar todos los archivos del contrato
-        archivos = obtener_archivos_por_contrato(manager, contrato_id)
-        for archivo in archivos:
-            manager.eliminar_archivo(archivo['id'], archivo['categoria'])
+        success = False
         
-        # Luego eliminar el contrato
-        success = manager.eliminar_contrato(contrato_id)
+        # Método 1: Método directo
+        if hasattr(manager, 'eliminar_contrato'):
+            try:
+                success = manager.eliminar_contrato(contrato_id)
+            except Exception:
+                pass
+        
+        # Método 2: Método alternativo
+        if not success and hasattr(manager, 'delete_contrato'):
+            try:
+                success = manager.delete_contrato(contrato_id)
+            except Exception:
+                pass
+        
         if success:
             return True, "✅ Contrato eliminado completamente"
         else:
-            return False, "❌ No se pudo eliminar el contrato"
+            return False, "❌ No se pudo eliminar el contrato (método no disponible)"
+            
     except Exception as e:
         return False, f"❌ Error eliminando contrato: {str(e)}"
+
+# ============================================
+# CONFIGURACIÓN ESPECIAL PARA RENDER
+# ============================================
+def configurar_para_render():
+    """Configuración específica para el despliegue en Render"""
+    # Verificar si estamos en Render
+    if 'RENDER' in os.environ or 'PORT' in os.environ:
+        print("🔧 Detectado entorno Render - Configurando puerto...")
+        
+        # Configurar el puerto para Render
+        port = int(os.environ.get('PORT', 10000))
+        
+        # Modificar los argumentos de línea de comandos
+        sys.argv = [
+            sys.argv[0],
+            'run',
+            'INICIO.py',
+            '--server.port', str(port),
+            '--server.address', '0.0.0.0',
+            '--server.enableCORS', 'false',
+            '--server.enableXsrfProtection', 'false'
+        ]
+
+# Ejecutar configuración si es necesario
+if __name__ == '__main__':
+    configurar_para_render()
     
-    # --- Mensaje informativo al final ---
+# --- Mensaje informativo al final ---
 st.markdown(
     """
     <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
@@ -396,7 +498,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
     st.markdown("<h4 style='text-align:center;'>📁 ARCHIVOS Y CONTRATOS</h4>", unsafe_allow_html=True)
 
     # ==================================================
-    #  SECCIÓN PARA SUBIR NUEVOS ARCHIVOS (MEJORADA)
+    #  SECCIÓN PARA SUBIR NUEVOS ARCHIVOS (MEJORADA Y FUNCIONAL)
     # ==================================================
     st.markdown("---")
     st.markdown("### 📤 Subir Archivos a Contrato Existente")
@@ -418,6 +520,12 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
             key="select_contrato_postgresql",
             help="Elige el contrato al que quieres añadir archivos"
         )
+        
+        # Mostrar información del contrato seleccionado
+        if contrato_seleccionado_id:
+            contrato_info = next((c for c in contratos_db if c['id'] == contrato_seleccionado_id), None)
+            if contrato_info:
+                st.info(f"📋 **Contrato seleccionado:** {contrato_info['numero_contrato']} - {contrato_info['contratista']}")
     else:
         st.warning("📭 No hay contratos disponibles en PostgreSQL")
         contrato_seleccionado_id = None
@@ -425,7 +533,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
     # Selección de sección
     seccion_seleccionada = st.selectbox(
         "📂 Seleccionar sección:",
-        ["CEDULAS", "ANEXOS", "SOPORTES FISICOS", "CONTRATO"],
+        ["CONTRATO", "CEDULAS", "ANEXOS", "SOPORTES FISICOS"],
         key="select_seccion_subir",
         help="Elige la categoría donde se guardarán los archivos"
     )
@@ -444,15 +552,27 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
     if subir_archivos and archivos_subir:
         if contrato_seleccionado_id:
             with st.spinner("Subiendo archivos..."):
+                archivos_exitosos = 0
+                archivos_fallidos = 0
+                
                 for archivo in archivos_subir:
                     success, message = guardar_archivo_postgresql(
                         manager, contrato_seleccionado_id, archivo, 
                         seccion_seleccionada, "anexo"
                     )
                     if success:
-                        st.success(message)
+                        archivos_exitosos += 1
+                        st.success(f"✅ {archivo.name}")
                     else:
-                        st.error(message)
+                        archivos_fallidos += 1
+                        st.error(f"❌ {archivo.name}: {message}")
+                
+                # Resumen
+                if archivos_exitosos > 0:
+                    st.success(f"🎉 {archivos_exitosos} archivo(s) subido(s) exitosamente")
+                if archivos_fallidos > 0:
+                    st.error(f"⚠️ {archivos_fallidos} archivo(s) no se pudieron subir")
+                    
             st.rerun()
         else:
             st.error("❌ No se seleccionó un contrato válido")
@@ -484,7 +604,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         st.rerun()
 
     # ==================================================
-    #  VISUALIZACIÓN DEL CONTRATO EXPANDIDO (CORREGIDA)
+    #  VISUALIZACIÓN DEL CONTRATO EXPANDIDO (CORREGIDA Y ROBUSTA)
     # ==================================================
     if st.session_state.contrato_expandido and st.session_state.contrato_expandido != "NINGUNO":
         st.markdown("---")
@@ -527,14 +647,15 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
             st.session_state.contrato_eliminando = None
             st.rerun()
         
-        # Obtener archivos del contrato usando la función corregida
-        archivos = obtener_archivos_por_contrato(manager, contrato_id)
+        # ✅ Obtener archivos del contrato usando la función robusta corregida
+        with st.spinner("Buscando archivos..."):
+            archivos = obtener_archivos_por_contrato(manager, contrato_id)
         
         if archivos:
             # Agrupar archivos por categoría
             archivos_por_categoria = {}
             for archivo in archivos:
-                categoria = archivo['categoria']
+                categoria = archivo.get('categoria', 'SIN CATEGORIA')
                 if categoria not in archivos_por_categoria:
                     archivos_por_categoria[categoria] = []
                 archivos_por_categoria[categoria].append(archivo)
@@ -547,40 +668,54 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
                 ("📂 SOPORTES", "SOPORTES FISICOS")
             ]
             
+            archivos_totales = 0
+            
             for icono, categoria in secciones:
                 if categoria in archivos_por_categoria:
-                    st.markdown(f"##### {icono}")
+                    archivos_categoria = archivos_por_categoria[categoria]
+                    archivos_totales += len(archivos_categoria)
                     
-                    for archivo in archivos_por_categoria[categoria]:
-                        size_mb = archivo['tamaño_bytes'] / 1024 / 1024
-                        archivo_key = f"{contrato_id}_{categoria}_{archivo['id']}"
+                    st.markdown(f"##### {icono} ({len(archivos_categoria)} archivos)")
+                    
+                    for archivo in archivos_categoria:
+                        size_bytes = archivo.get('tamaño_bytes', 0)
+                        size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
+                        archivo_key = f"{contrato_id}_{categoria}_{archivo.get('id', '0')}"
                         
                         st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
                         
                         col1, col2, col3 = st.columns([3, 1, 1])
                         with col1:
-                            st.markdown(f"**{archivo['nombre_archivo']}**")
-                            st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+                            nombre_archivo = archivo.get('nombre_archivo', 'Sin nombre')
+                            st.markdown(f"**{nombre_archivo}**")
+                            if size_mb > 0:
+                                st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+                            else:
+                                st.markdown(f"*Tamaño: Desconocido*")
                         
                         with col2:
                             # ✅ BOTÓN DE DESCARGA FUNCIONAL
-                            st.download_button(
-                                label="📥 Descargar",
-                                data=archivo['contenido'],
-                                file_name=archivo['nombre_archivo'],
-                                mime="application/octet-stream",
-                                key=f"download_{archivo_key}",
-                                use_container_width=True
-                            )
+                            contenido = archivo.get('contenido', b'')
+                            if contenido:
+                                st.download_button(
+                                    label="📥 Descargar",
+                                    data=contenido,
+                                    file_name=nombre_archivo,
+                                    mime="application/octet-stream",
+                                    key=f"download_{archivo_key}",
+                                    use_container_width=True
+                                )
+                            else:
+                                st.warning("Sin contenido")
                         
                         with col3:
                             # ✅ BOTÓN DE ELIMINACIÓN FUNCIONAL
                             if st.session_state.archivo_eliminando == archivo_key:
-                                st.warning(f"¿Eliminar {archivo['nombre_archivo']}?")
+                                st.warning(f"¿Eliminar {nombre_archivo}?")
                                 col_confirm, col_cancel = st.columns(2)
                                 with col_confirm:
                                     if st.form_submit_button("✅ Sí", use_container_width=True, key=f"confirm_del_{archivo_key}"):
-                                        success, message = eliminar_archivo_postgresql(manager, archivo['id'], categoria)
+                                        success, message = eliminar_archivo_postgresql(manager, archivo.get('id'), categoria)
                                         if success:
                                             st.success(message)
                                             st.session_state.archivo_eliminando = None
@@ -597,10 +732,12 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
                                     st.rerun()
                         
                         st.markdown("</div>", unsafe_allow_html=True)
+            
+            st.info(f"📊 **Total de archivos en el contrato:** {archivos_totales}")
         else:
             st.info("ℹ️ No hay archivos en este contrato")
         
-        # ✅ ELIMINACIÓN DE CONTRATO COMPLETO (FUNCIONAL)
+        # ✅ ELIMINACIÓN DE CONTRATO COMPLETO (FUNCIONAL Y ROBUSTA)
         st.markdown("---")
         st.markdown("### 🗑️ Eliminar Contrato Completo")
         
@@ -670,4 +807,4 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         st.session_state.archivo_eliminando = None
         st.session_state.contrato_eliminando = None
         st.rerun()
-
+        

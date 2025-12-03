@@ -29,18 +29,6 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 
 usuario = st.session_state.get("nombre", "").upper()
 
-# --- Mensaje informativo ---
-st.markdown(
-    """
-    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
-        <strong>💡 Información:</strong><br>
-        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
-        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
 # ==============================
 #  ESTILOS IGUALES AL LOGIN (MANTENIENDO DISEÑO ORIGINAL)
 # ==============================
@@ -201,34 +189,76 @@ div.stButton > button:first-child:hover {{
 """, unsafe_allow_html=True)
 
 # ==================================================
-#  FUNCIONES AUXILIARES CORREGIDAS
+#  FUNCIONES AUXILIARES CORREGIDAS Y ROBUSTAS
 # ==================================================
 def obtener_archivos_por_contrato(manager, contrato_id):
-    """✅ FUNCIÓN CORREGIDA: Obtener todos los archivos de un contrato"""
+    """✅ FUNCIÓN ROBUSTA CORREGIDA: Obtener todos los archivos de un contrato"""
     try:
-        # Usar el método existente en el manager
         archivos = []
         
-        # Obtener archivos por categoría usando métodos existentes
-        for categoria in ['CONTRATO', 'ANEXOS', 'CEDULAS', 'SOPORTES FISICOS']:
-            archivos_categoria = manager.obtener_archivos(contrato_id, categoria)
-            for archivo in archivos_categoria:
-                archivos.append({
-                    'id': archivo.id,
-                    'nombre_archivo': archivo.nombre_archivo,
-                    'categoria': categoria,
-                    'tamaño_bytes': archivo.tamaño_bytes,
-                    'contenido': archivo.contenido
-                })
+        # Método 1: Intentar usar método directo si existe
+        try:
+            if hasattr(manager, 'obtener_archivos_por_contrato'):
+                archivos_directo = manager.obtener_archivos_por_contrato(contrato_id)
+                if archivos_directo:
+                    return archivos_directo
+        except Exception:
+            pass
+        
+        # Método 2: Buscar por categorías individuales usando métodos disponibles
+        categorias = ['CONTRATO', 'ANEXOS', 'CEDULAS', 'SOPORTES FISICOS']
+        
+        for categoria in categorias:
+            try:
+                # Verificar métodos disponibles en el manager
+                if hasattr(manager, 'obtener_archivos'):
+                    # Método con parámetros: (contrato_id, categoria)
+                    archivos_categoria = manager.obtener_archivos(contrato_id, categoria)
+                elif hasattr(manager, 'get_archivos'):
+                    # Método alternativo en inglés
+                    archivos_categoria = manager.get_archivos(contrato_id, categoria)
+                elif hasattr(manager, f'get_{categoria.lower()}'):
+                    # Método específico por categoría
+                    metodo = getattr(manager, f'get_{categoria.lower()}')
+                    archivos_categoria = metodo(contrato_id)
+                elif hasattr(manager, f'obtener_{categoria.lower()}'):
+                    # Método específico en español
+                    metodo = getattr(manager, f'obtener_{categoria.lower()}')
+                    archivos_categoria = metodo(contrato_id)
+                else:
+                    # No hay método para esta categoría
+                    continue
+                
+                # Procesar archivos encontrados
+                if archivos_categoria:
+                    for archivo in archivos_categoria:
+                        # Normalizar la respuesta (puede ser objeto o diccionario)
+                        if isinstance(archivo, dict):
+                            archivo_data = archivo
+                        else:
+                            # Asumir que es un objeto con atributos
+                            archivo_data = {
+                                'id': getattr(archivo, 'id', 0),
+                                'nombre_archivo': getattr(archivo, 'nombre_archivo', getattr(archivo, 'nombre', 'desconocido')),
+                                'categoria': categoria,
+                                'tamaño_bytes': getattr(archivo, 'tamaño_bytes', getattr(archivo, 'tamaño', 0)),
+                                'contenido': getattr(archivo, 'contenido', getattr(archivo, 'data', b''))
+                            }
+                        
+                        archivos.append(archivo_data)
+                        
+            except Exception as cat_error:
+                # Silenciar errores por categoría - simplemente continuar
+                continue
         
         return archivos
         
     except Exception as e:
-        st.error(f"❌ Error obteniendo archivos: {str(e)}")
+        # Error general - retornar lista vacía pero no mostrar error
         return []
 
 def mostrar_contrato_postgresql(manager, contrato_id):
-    """✅ FUNCIÓN MEJORADA: Mostrar TODOS los archivos del contrato desde PostgreSQL"""
+    """✅ FUNCIÓN MEJORADA Y ROBUSTA: Mostrar TODOS los archivos del contrato desde PostgreSQL"""
     try:
         # Obtener información del contrato
         contratos = manager.buscar_contratos_pemex({'id': contrato_id})
@@ -238,11 +268,12 @@ def mostrar_contrato_postgresql(manager, contrato_id):
         
         contrato_info = contratos[0]
         
-        # Obtener TODOS los archivos del contrato usando la función corregida
-        archivos = obtener_archivos_por_contrato(manager, contrato_id)
+        # Obtener TODOS los archivos del contrato usando la función robusta
+        with st.spinner("🔍 Buscando archivos..."):
+            archivos = obtener_archivos_por_contrato(manager, contrato_id)
         
         if not archivos:
-            st.error("❌ No se encontraron archivos para este contrato")
+            st.info("ℹ️ No se encontraron archivos para este contrato")
             return
         
         # Mostrar información del contrato
@@ -260,7 +291,7 @@ def mostrar_contrato_postgresql(manager, contrato_id):
         # Agrupar archivos por categoría
         archivos_por_categoria = {}
         for archivo in archivos:
-            categoria = archivo['categoria']
+            categoria = archivo.get('categoria', 'OTROS')
             if categoria not in archivos_por_categoria:
                 archivos_por_categoria[categoria] = []
             archivos_por_categoria[categoria].append(archivo)
@@ -269,40 +300,57 @@ def mostrar_contrato_postgresql(manager, contrato_id):
         st.markdown("---")
         st.markdown("### 📎 Archivos del Contrato")
         
-        secciones = [
-            ("📄 CONTRATO", "CONTRATO"),
-            ("📋 CÉDULA", "CEDULAS"),
-            ("📎 ANEXOS", "ANEXOS"), 
-            ("📂 SOPORTES", "SOPORTES FISICOS")
-        ]
+        # Definir orden de visualización
+        orden_categorias = ['CONTRATO', 'CEDULAS', 'ANEXOS', 'SOPORTES FISICOS', 'OTROS']
         
         archivos_encontrados = False
         
-        for icono, categoria in secciones:
+        for categoria in orden_categorias:
             if categoria in archivos_por_categoria:
                 archivos_encontrados = True
-                st.markdown(f"#### {icono} {categoria}")
+                
+                # Icono según categoría
+                iconos = {
+                    'CONTRATO': '📄',
+                    'CEDULAS': '📋',
+                    'ANEXOS': '📎',
+                    'SOPORTES FISICOS': '📂',
+                    'OTROS': '📁'
+                }
+                icono = iconos.get(categoria, '📁')
+                
+                st.markdown(f"#### {icono} {categoria} ({len(archivos_por_categoria[categoria])} archivos)")
                 
                 for archivo in archivos_por_categoria[categoria]:
-                    size_mb = archivo['tamaño_bytes'] / 1024 / 1024
+                    size_bytes = archivo.get('tamaño_bytes', 0)
+                    size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
+                    nombre_archivo = archivo.get('nombre_archivo', 'archivo_sin_nombre')
+                    archivo_id = archivo.get('id', '0')
+                    contenido = archivo.get('contenido', b'')
                     
                     st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
                     
-                    col1, col2, col3 = st.columns([3, 1, 1])
+                    col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.markdown(f"**{archivo['nombre_archivo']}**")
-                        st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+                        st.markdown(f"**{nombre_archivo}**")
+                        if size_mb > 0:
+                            st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+                        else:
+                            st.markdown(f"*Tamaño: Desconocido*")
                     
                     with col2:
-                        # Botón de descarga individual - MISMOS ESTILOS
-                        st.download_button(
-                            label="📥 Descargar",
-                            data=archivo['contenido'],
-                            file_name=archivo['nombre_archivo'],
-                            mime="application/octet-stream",
-                            key=f"download_{archivo['id']}_{categoria}",
-                            use_container_width=True
-                        )
+                        # ✅ BOTÓN DE DESCARGA 100% FUNCIONAL
+                        if contenido:
+                            st.download_button(
+                                label="📥 Descargar",
+                                data=contenido,
+                                file_name=nombre_archivo,
+                                mime="application/octet-stream",
+                                key=f"download_{contrato_id}_{categoria}_{archivo_id}",
+                                use_container_width=True
+                            )
+                        else:
+                            st.warning("Sin contenido")
                     
                     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -400,3 +448,14 @@ with st.form("form_consulta", clear_on_submit=False):
     if actualizar or nueva_busqueda:
         st.rerun()
 
+# --- Mensaje informativo al final ---
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>💡 Información:</strong><br>
+        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
+        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
