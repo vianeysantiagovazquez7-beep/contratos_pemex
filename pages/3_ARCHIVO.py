@@ -56,13 +56,12 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
             archivo_id = manager.guardar_archivo_completo(
                 contrato_id, archivo, categoria, tipo_archivo, nombre
             )
-        # Opción 2: Si tiene guardar_archivo (más común)
-        elif hasattr(manager, 'guardar_archivo'):
-            archivo_id = manager.guardar_archivo(
+        # Opción 2: Si tiene guardar_archivo_streamlit (MÉTODO NUEVO QUE SÍ EXISTE)
+        elif hasattr(manager, 'guardar_archivo_streamlit'):
+            archivo_id = manager.guardar_archivo_streamlit(
                 contrato_id=contrato_id,
-                nombre_archivo=archivo.name,
+                archivo_streamlit=archivo,
                 categoria=categoria,
-                contenido=archivo_bytes,
                 usuario=nombre
             )
         # Opción 3: Si tiene insertar_archivo
@@ -73,16 +72,11 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
                 categoria=categoria,
                 contenido=archivo_bytes
             )
-        # Opción 4: Usar SQL directo (ÚLTIMO RECURSO)
+        # Opción 4: Usar método alternativo si no hay ninguno
         else:
-            query = """
-            INSERT INTO archivos_pemex (contrato_id, nombre_archivo, categoria, contenido, usuario_subio)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-            """
-            params = (contrato_id, archivo.name, categoria, archivo_bytes, nombre)
-            result = manager.execute_query(query, params, fetch_one=True)
-            archivo_id = result['id'] if result else None
+            # Intentar guardar usando obtener_archivos si no hay método específico
+            st.warning("⚠️ No se encontró método específico para guardar, intentando método alternativo...")
+            return False, "❌ No se encontró un método para guardar archivos"
         
         if archivo_id:
             return True, f"✅ {archivo.name} guardado exitosamente (ID: {archivo_id})"
@@ -162,20 +156,14 @@ def obtener_archivos_por_contrato(manager, contrato_id):
             except Exception as cat_error:
                 continue  # Si no hay archivos en esa categoría, continuamos
         
-        # Método 3: Si no encontramos nada, intentar SQL directo
+        # Método 3: Si no encontramos nada, intentar con obtener_archivos sin categoría
         if not archivos:
             try:
-                query = """
-                SELECT id, nombre_archivo, categoria, tamaño_bytes, contenido
-                FROM archivos_pemex
-                WHERE contrato_id = %s
-                ORDER BY categoria, nombre_archivo
-                """
-                archivos_sql = manager.execute_query(query, (contrato_id,), fetch_all=True)
-                if archivos_sql:
-                    return archivos_sql
+                archivos_todos = manager.obtener_archivos(contrato_id)
+                if archivos_todos:
+                    return archivos_todos
             except Exception as sql_error:
-                st.warning(f"⚠️ No se pudieron obtener archivos por SQL: {sql_error}")
+                st.warning(f"⚠️ No se pudieron obtener archivos: {sql_error}")
         
         return archivos
         
@@ -203,12 +191,10 @@ def eliminar_archivo_postgresql(manager, archivo_id, categoria):
             except Exception:
                 pass
         
-        # Método 3: SQL directo
-        if not success:
+        # Método 3: Intentar eliminar sin categoría
+        if not success and hasattr(manager, 'eliminar_archivo'):
             try:
-                query = "DELETE FROM archivos_pemex WHERE id = %s"
-                manager.execute_query(query, (archivo_id,))
-                success = True
+                success = manager.eliminar_archivo(archivo_id)
             except Exception:
                 pass
         
@@ -239,18 +225,16 @@ def eliminar_contrato_postgresql(manager, contrato_id):
             except Exception:
                 pass
         
-        # Método 3: SQL directo
+        # Método 3: Intentar eliminar archivos primero y luego el contrato
         if not success:
             try:
-                # Eliminar archivos primero
-                query_archivos = "DELETE FROM archivos_pemex WHERE contrato_id = %s"
-                manager.execute_query(query_archivos, (contrato_id,))
+                # Primero eliminar archivos asociados si existe el método
+                if hasattr(manager, 'eliminar_archivos_contrato'):
+                    manager.eliminar_archivos_contrato(contrato_id)
                 
-                # Eliminar contrato
-                query_contrato = "DELETE FROM contratos_pemex WHERE id = %s"
-                manager.execute_query(query_contrato, (contrato_id,))
-                
-                success = True
+                # Luego eliminar el contrato
+                if hasattr(manager, 'eliminar_contrato'):
+                    success = manager.eliminar_contrato(contrato_id)
             except Exception:
                 pass
         
@@ -309,19 +293,34 @@ def verificar_metodos_manager(manager):
     
     if st.sidebar.button("Ver tablas en DB"):
         try:
-            query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
-            tablas = manager.execute_query(query, fetch_all=True)
-            st.sidebar.write("**Tablas disponibles:**")
-            for tabla in tablas:
-                st.sidebar.write(f"- {tabla['table_name']}")
+            # Usar métodos indirectos para verificar tablas
+            success, contratos = obtener_contratos_postgresql(manager)
+            if success:
+                st.sidebar.success("✅ Tabla contratos_pemex existe")
+            else:
+                st.sidebar.error("❌ No se pudo acceder a la tabla contratos_pemex")
+            
+            # Verificar si hay archivos
+            if success and contratos:
+                for contrato in contratos[:1]:  # Solo el primer contrato
+                    archivos = obtener_archivos_por_contrato(manager, contrato['id'])
+                    st.sidebar.info(f"Archivos en contrato {contrato['id']}: {len(archivos)}")
+                    break
         except Exception as e:
             st.sidebar.error(f"Error: {e}")
     
     if st.sidebar.button("Contar archivos en DB"):
         try:
-            query = "SELECT COUNT(*) as total FROM archivos_pemex"
-            resultado = manager.execute_query(query, fetch_one=True)
-            st.sidebar.info(f"Archivos en DB: {resultado['total']}")
+            # Contar archivos usando métodos existentes
+            total_archivos = 0
+            success, contratos = obtener_contratos_postgresql(manager)
+            if success:
+                for contrato in contratos:
+                    archivos = obtener_archivos_por_contrato(manager, contrato['id'])
+                    total_archivos += len(archivos)
+                st.sidebar.info(f"Archivos en DB: {total_archivos}")
+            else:
+                st.sidebar.error("No se pudieron obtener contratos")
         except Exception as e:
             st.sidebar.error(f"Error contando archivos: {e}")
 
