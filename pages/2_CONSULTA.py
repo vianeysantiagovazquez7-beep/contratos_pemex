@@ -29,6 +29,18 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 
 usuario = st.session_state.get("nombre", "").upper()
 
+# --- Mensaje informativo al final ---
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>💡 Información:</strong><br>
+        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
+        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 # ==============================
 #  ESTILOS IGUALES AL LOGIN (MANTENIENDO DISEÑO ORIGINAL)
 # ==============================
@@ -185,6 +197,21 @@ div.stButton > button:first-child:hover {{
     text-align: center;
     font-weight: bold;
 }}
+
+.descarga-btn {{
+    background-color: #17a2b8 !important;
+    color: white !important;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.9em;
+    width: 100%;
+    margin: 5px 0;
+}}
+
+.descarga-btn:hover {{
+    background-color: #138496 !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -257,109 +284,6 @@ def obtener_archivos_por_contrato(manager, contrato_id):
         # Error general - retornar lista vacía pero no mostrar error
         return []
 
-def mostrar_contrato_postgresql(manager, contrato_id):
-    """✅ FUNCIÓN MEJORADA Y ROBUSTA: Mostrar TODOS los archivos del contrato desde PostgreSQL"""
-    try:
-        # Obtener información del contrato
-        contratos = manager.buscar_contratos_pemex({'id': contrato_id})
-        if not contratos:
-            st.error("❌ Contrato no encontrado")
-            return
-        
-        contrato_info = contratos[0]
-        
-        # Obtener TODOS los archivos del contrato usando la función robusta
-        with st.spinner("🔍 Buscando archivos..."):
-            archivos = obtener_archivos_por_contrato(manager, contrato_id)
-        
-        if not archivos:
-            st.info("ℹ️ No se encontraron archivos para este contrato")
-            return
-        
-        # Mostrar información del contrato
-        st.markdown("**📋 Información del contrato:**")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write(f"- **Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
-            st.write(f"- **Contratista:** {contrato_info.get('contratista', 'No especificado')}")
-            st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
-        with col2:
-            st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
-            st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
-            st.write(f"- **Total archivos:** {len(archivos)}")
-        
-        # Agrupar archivos por categoría
-        archivos_por_categoria = {}
-        for archivo in archivos:
-            categoria = archivo.get('categoria', 'OTROS')
-            if categoria not in archivos_por_categoria:
-                archivos_por_categoria[categoria] = []
-            archivos_por_categoria[categoria].append(archivo)
-        
-        # Mostrar archivos por categoría (MISMA ESTRUCTURA QUE TU DISEÑO ORIGINAL)
-        st.markdown("---")
-        st.markdown("### 📎 Archivos del Contrato")
-        
-        # Definir orden de visualización
-        orden_categorias = ['CONTRATO', 'CEDULAS', 'ANEXOS', 'SOPORTES FISICOS', 'OTROS']
-        
-        archivos_encontrados = False
-        
-        for categoria in orden_categorias:
-            if categoria in archivos_por_categoria:
-                archivos_encontrados = True
-                
-                # Icono según categoría
-                iconos = {
-                    'CONTRATO': '📄',
-                    'CEDULAS': '📋',
-                    'ANEXOS': '📎',
-                    'SOPORTES FISICOS': '📂',
-                    'OTROS': '📁'
-                }
-                icono = iconos.get(categoria, '📁')
-                
-                st.markdown(f"#### {icono} {categoria} ({len(archivos_por_categoria[categoria])} archivos)")
-                
-                for archivo in archivos_por_categoria[categoria]:
-                    size_bytes = archivo.get('tamaño_bytes', 0)
-                    size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
-                    nombre_archivo = archivo.get('nombre_archivo', 'archivo_sin_nombre')
-                    archivo_id = archivo.get('id', '0')
-                    contenido = archivo.get('contenido', b'')
-                    
-                    st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
-                    
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.markdown(f"**{nombre_archivo}**")
-                        if size_mb > 0:
-                            st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
-                        else:
-                            st.markdown(f"*Tamaño: Desconocido*")
-                    
-                    with col2:
-                        # ✅ BOTÓN DE DESCARGA 100% FUNCIONAL
-                        if contenido:
-                            st.download_button(
-                                label="📥 Descargar",
-                                data=contenido,
-                                file_name=nombre_archivo,
-                                mime="application/octet-stream",
-                                key=f"download_{contrato_id}_{categoria}_{archivo_id}",
-                                use_container_width=True
-                            )
-                        else:
-                            st.warning("Sin contenido")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-        if not archivos_encontrados:
-            st.info("ℹ️ No se encontraron archivos en este contrato.")
-        
-    except Exception as e:
-        st.error(f"❌ Error mostrando contrato: {str(e)}")
-
 # ==================================================
 #  INTERFAZ PRINCIPAL - MANTENIENDO DISEÑO ORIGINAL
 # ==================================================
@@ -429,8 +353,125 @@ with st.form("form_consulta", clear_on_submit=False):
                 # Mostrar información del contrato seleccionado
                 st.markdown(f"<div class='carpeta-header'>📁 CONTRATO: {seleccion_db['numero_contrato']}</div>", unsafe_allow_html=True)
                 
-                # Mostrar contrato completo desde PostgreSQL
-                mostrar_contrato_postgresql(manager, contrato_id)
+                # ==================================================
+                #  MOSTRAR CONTRATO COMPLETO DESDE POSTGRESQL
+                # ==================================================
+                try:
+                    # Obtener información del contrato
+                    contratos = manager.buscar_contratos_pemex({'id': contrato_id})
+                    if not contratos:
+                        st.error("❌ Contrato no encontrado")
+                    else:
+                        contrato_info = contratos[0]
+                        
+                        # Obtener TODOS los archivos del contrato usando la función robusta
+                        with st.spinner("🔍 Buscando archivos..."):
+                            archivos = obtener_archivos_por_contrato(manager, contrato_id)
+                        
+                        if not archivos:
+                            st.info("ℹ️ No se encontraron archivos para este contrato")
+                        else:
+                            # Mostrar información del contrato
+                            st.markdown("**📋 Información del contrato:**")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"- **Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
+                                st.write(f"- **Contratista:** {contrato_info.get('contratista', 'No especificado')}")
+                                st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
+                            with col2:
+                                st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
+                                st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
+                                st.write(f"- **Total archivos:** {len(archivos)}")
+                            
+                            # Agrupar archivos por categoría
+                            archivos_por_categoria = {}
+                            for archivo in archivos:
+                                categoria = archivo.get('categoria', 'OTROS')
+                                if categoria not in archivos_por_categoria:
+                                    archivos_por_categoria[categoria] = []
+                                archivos_por_categoria[categoria].append(archivo)
+                            
+                            # Mostrar archivos por categoría
+                            st.markdown("---")
+                            st.markdown("### 📎 Archivos del Contrato")
+                            
+                            # Definir orden de visualización
+                            orden_categorias = ['CONTRATO', 'CEDULAS', 'ANEXOS', 'SOPORTES FISICOS', 'OTROS']
+                            
+                            archivos_encontrados = False
+                            
+                            for categoria in orden_categorias:
+                                if categoria in archivos_por_categoria:
+                                    archivos_encontrados = True
+                                    
+                                    # Icono según categoría
+                                    iconos = {
+                                        'CONTRATO': '📄',
+                                        'CEDULAS': '📋',
+                                        'ANEXOS': '📎',
+                                        'SOPORTES FISICOS': '📂',
+                                        'OTROS': '📁'
+                                    }
+                                    icono = iconos.get(categoria, '📁')
+                                    
+                                    st.markdown(f"#### {icono} {categoria} ({len(archivos_por_categoria[categoria])} archivos)")
+                                    
+                                    for archivo in archivos_por_categoria[categoria]:
+                                        size_bytes = archivo.get('tamaño_bytes', 0)
+                                        size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
+                                        nombre_archivo = archivo.get('nombre_archivo', 'archivo_sin_nombre')
+                                        archivo_id = archivo.get('id', '0')
+                                        contenido = archivo.get('contenido', b'')
+                                        
+                                        # Crear un contenedor para el archivo
+                                        st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
+                                        
+                                        col1, col2 = st.columns([3, 1])
+                                        with col1:
+                                            st.markdown(f"**{nombre_archivo}**")
+                                            if size_mb > 0:
+                                                st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
+                                            else:
+                                                st.markdown(f"*Tamaño: Desconocido*")
+                                        
+                                        with col2:
+                                            # ✅ BOTÓN DE DESCARGA 100% FUNCIONAL DENTRO DE FORM
+                                            if contenido:
+                                                # ID único para este archivo
+                                                unique_id = f"download_{contrato_id}_{categoria}_{archivo_id}"
+                                                
+                                                # Convertir a base64
+                                                b64 = base64.b64encode(contenido).decode()
+                                                
+                                                # Enlace oculto para descarga
+                                                st.markdown(f'''
+                                                <div style="display:none;">
+                                                    <a id="{unique_id}_anchor" href="data:application/octet-stream;base64,{b64}" 
+                                                       download="{nombre_archivo}">
+                                                    </a>
+                                                </div>
+                                                ''', unsafe_allow_html=True)
+                                                
+                                                # Botón que activa la descarga vía JavaScript
+                                                if st.form_submit_button("📥 Descargar", 
+                                                                        use_container_width=True,
+                                                                        key=f"submit_{unique_id}"):
+                                                    # JavaScript para hacer clic en el enlace oculto
+                                                    st.markdown(f'''
+                                                    <script>
+                                                    document.getElementById("{unique_id}_anchor").click();
+                                                    </script>
+                                                    ''', unsafe_allow_html=True)
+                                            else:
+                                                st.warning("Sin contenido")
+                                        
+                                        st.markdown("</div>", unsafe_allow_html=True)
+
+                            if not archivos_encontrados:
+                                st.info("ℹ️ No se encontraron archivos en este contrato.")
+                                
+                except Exception as e:
+                    st.error(f"❌ Error mostrando contrato: {str(e)}")
 
         except Exception as e:
             st.error(f"❌ Error consultando base de datos: {str(e)}")
@@ -448,14 +489,3 @@ with st.form("form_consulta", clear_on_submit=False):
     if actualizar or nueva_busqueda:
         st.rerun()
 
-# --- Mensaje informativo al final ---
-st.markdown(
-    """
-    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
-        <strong>💡 Información:</strong><br>
-        Usa la barra de búsqueda para encontrar contratos específicos. Puedes buscar por número de contrato, nombre del contratista o cualquier palabra clave.<br>
-        <strong>PostgreSQL:</strong> Consulta todos los archivos (CONTRATO, ANEXOS, CÉDULAS, SOPORTES) almacenados en la base de datos.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
