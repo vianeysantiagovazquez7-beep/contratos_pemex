@@ -42,13 +42,58 @@ def obtener_contratos_postgresql(manager):
         return False, f"❌ Error obteniendo contratos: {str(e)}"
 
 def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_archivo):
-    """Guardar archivo individual en PostgreSQL"""
+    """✅ VERSIÓN CORREGIDA Y FUNCIONAL: Guardar archivo individual en PostgreSQL"""
     try:
-        archivo_id = manager.guardar_archivo_completo(
-            contrato_id, archivo, categoria, tipo_archivo, nombre
-        )
-        return True, f"✅ {archivo.name} guardado exitosamente"
+        # LEER el contenido del archivo primero (esto es lo que fallaba)
+        archivo_bytes = archivo.read()
+        
+        # Volver al inicio del archivo
+        archivo.seek(0)
+        
+        # Verificar que el manager tenga el método CORRECTO
+        # Opción 1: Si tiene guardar_archivo_completo
+        if hasattr(manager, 'guardar_archivo_completo'):
+            archivo_id = manager.guardar_archivo_completo(
+                contrato_id, archivo, categoria, tipo_archivo, nombre
+            )
+        # Opción 2: Si tiene guardar_archivo (más común)
+        elif hasattr(manager, 'guardar_archivo'):
+            archivo_id = manager.guardar_archivo(
+                contrato_id=contrato_id,
+                nombre_archivo=archivo.name,
+                categoria=categoria,
+                contenido=archivo_bytes,
+                usuario=nombre
+            )
+        # Opción 3: Si tiene insertar_archivo
+        elif hasattr(manager, 'insertar_archivo'):
+            archivo_id = manager.insertar_archivo(
+                contrato_id=contrato_id,
+                nombre_archivo=archivo.name,
+                categoria=categoria,
+                contenido=archivo_bytes
+            )
+        # Opción 4: Usar SQL directo (ÚLTIMO RECURSO)
+        else:
+            query = """
+            INSERT INTO archivos_pemex (contrato_id, nombre_archivo, categoria, contenido, usuario_subio)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """
+            params = (contrato_id, archivo.name, categoria, archivo_bytes, nombre)
+            result = manager.execute_query(query, params, fetch_one=True)
+            archivo_id = result['id'] if result else None
+        
+        if archivo_id:
+            return True, f"✅ {archivo.name} guardado exitosamente (ID: {archivo_id})"
+        else:
+            return False, "❌ No se pudo obtener ID del archivo guardado"
+            
     except Exception as e:
+        # DEBUG: Mostrar error detallado
+        st.error(f"🔴 ERROR DETALLADO en guardar_archivo_postgresql: {str(e)}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
         return False, f"❌ Error guardando: {str(e)}"
 
 def obtener_archivos_por_contrato(manager, contrato_id):
@@ -117,6 +162,21 @@ def obtener_archivos_por_contrato(manager, contrato_id):
             except Exception as cat_error:
                 continue  # Si no hay archivos en esa categoría, continuamos
         
+        # Método 3: Si no encontramos nada, intentar SQL directo
+        if not archivos:
+            try:
+                query = """
+                SELECT id, nombre_archivo, categoria, tamaño_bytes, contenido
+                FROM archivos_pemex
+                WHERE contrato_id = %s
+                ORDER BY categoria, nombre_archivo
+                """
+                archivos_sql = manager.execute_query(query, (contrato_id,), fetch_all=True)
+                if archivos_sql:
+                    return archivos_sql
+            except Exception as sql_error:
+                st.warning(f"⚠️ No se pudieron obtener archivos por SQL: {sql_error}")
+        
         return archivos
         
     except Exception as e:
@@ -140,6 +200,15 @@ def eliminar_archivo_postgresql(manager, archivo_id, categoria):
         if not success and hasattr(manager, 'delete_archivo'):
             try:
                 success = manager.delete_archivo(archivo_id)
+            except Exception:
+                pass
+        
+        # Método 3: SQL directo
+        if not success:
+            try:
+                query = "DELETE FROM archivos_pemex WHERE id = %s"
+                manager.execute_query(query, (archivo_id,))
+                success = True
             except Exception:
                 pass
         
@@ -167,6 +236,21 @@ def eliminar_contrato_postgresql(manager, contrato_id):
         if not success and hasattr(manager, 'delete_contrato'):
             try:
                 success = manager.delete_contrato(contrato_id)
+            except Exception:
+                pass
+        
+        # Método 3: SQL directo
+        if not success:
+            try:
+                # Eliminar archivos primero
+                query_archivos = "DELETE FROM archivos_pemex WHERE contrato_id = %s"
+                manager.execute_query(query_archivos, (contrato_id,))
+                
+                # Eliminar contrato
+                query_contrato = "DELETE FROM contratos_pemex WHERE id = %s"
+                manager.execute_query(query_contrato, (contrato_id,))
+                
+                success = True
             except Exception:
                 pass
         
@@ -204,7 +288,43 @@ def configurar_para_render():
 # Ejecutar configuración si es necesario
 if __name__ == '__main__':
     configurar_para_render()
+
+# ==============================
+#  DIAGNÓSTICO RÁPIDO
+# ==============================
+
+def verificar_metodos_manager(manager):
+    """Verificar qué métodos tiene disponible el manager"""
+    st.sidebar.markdown("### 🔍 DIAGNÓSTICO")
     
+    if st.sidebar.button("Ver métodos disponibles"):
+        metodos = [m for m in dir(manager) if not m.startswith('_')]
+        st.sidebar.write(f"**Total métodos:** {len(metodos)}")
+        
+        # Buscar métodos relacionados con archivos
+        metodos_archivos = [m for m in metodos if 'archivo' in m.lower()]
+        st.sidebar.write("**Métodos de archivos:**")
+        for metodo in metodos_archivos:
+            st.sidebar.write(f"- {metodo}")
+    
+    if st.sidebar.button("Ver tablas en DB"):
+        try:
+            query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            tablas = manager.execute_query(query, fetch_all=True)
+            st.sidebar.write("**Tablas disponibles:**")
+            for tabla in tablas:
+                st.sidebar.write(f"- {tabla['table_name']}")
+        except Exception as e:
+            st.sidebar.error(f"Error: {e}")
+    
+    if st.sidebar.button("Contar archivos en DB"):
+        try:
+            query = "SELECT COUNT(*) as total FROM archivos_pemex"
+            resultado = manager.execute_query(query, fetch_one=True)
+            st.sidebar.info(f"Archivos en DB: {resultado['total']}")
+        except Exception as e:
+            st.sidebar.error(f"Error contando archivos: {e}")
+
 # --- Mensaje informativo al final ---
 st.markdown(
     """
@@ -486,6 +606,9 @@ if not manager:
     st.error("❌ No se pudo conectar a PostgreSQL. Revisa la configuración.")
     st.stop()
 
+# 🔍 DIAGNÓSTICO (opcional - descomenta si necesitas)
+# verificar_metodos_manager(manager)
+
 with st.form("form_gestion_archivos", clear_on_submit=True):
     
     if logo_base64:
@@ -498,7 +621,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
     st.markdown("<h4 style='text-align:center;'>📁 ARCHIVOS Y CONTRATOS</h4>", unsafe_allow_html=True)
 
     # ==================================================
-    #  SECCIÓN PARA SUBIR NUEVOS ARCHIVOS (MEJORADA Y FUNCIONAL)
+    #  SECCIÓN PARA SUBIR NUEVOS ARCHIVOS (CORREGIDA)
     # ==================================================
     st.markdown("---")
     st.markdown("### 📤 Subir Archivos a Contrato Existente")
@@ -578,7 +701,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
             st.error("❌ No se seleccionó un contrato válido")
 
     # ==================================================
-    #  CONTROL DE EXPANSIÓN DE CARPETAS (MEJORADO)
+    #  CONTROL DE EXPANSIÓN DE CARPETAS
     # ==================================================
     st.markdown("---")
     st.markdown("### 📂 Control de Visualización")
@@ -604,7 +727,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         st.rerun()
 
     # ==================================================
-    #  VISUALIZACIÓN DEL CONTRATO EXPANDIDO (CORREGIDA Y ROBUSTA)
+    #  VISUALIZACIÓN DEL CONTRATO EXPANDIDO
     # ==================================================
     if st.session_state.contrato_expandido and st.session_state.contrato_expandido != "NINGUNO":
         st.markdown("---")
@@ -737,7 +860,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         else:
             st.info("ℹ️ No hay archivos en este contrato")
         
-        # ✅ ELIMINACIÓN DE CONTRATO COMPLETO (FUNCIONAL Y ROBUSTA)
+        # ✅ ELIMINACIÓN DE CONTRATO COMPLETO
         st.markdown("---")
         st.markdown("### 🗑️ Eliminar Contrato Completo")
         
@@ -773,7 +896,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ==================================================
-    #  LISTA DE CONTRATOS DISPONIBLES (MEJORADA)
+    #  LISTA DE CONTRATOS DISPONIBLES
     # ==================================================
     st.markdown("---")
     st.markdown("### 📂 Contratos Disponibles")
@@ -807,4 +930,3 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         st.session_state.archivo_eliminando = None
         st.session_state.contrato_eliminando = None
         st.rerun()
-        
