@@ -817,17 +817,34 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
                                 st.markdown(f"*Tamaño: Desconocido*")
                         
                         with col2:
-                            # ✅ BOTÓN DE DESCARGA FUNCIONAL
+                            # ✅ BOTÓN DE DESCARGA FUNCIONAL (CORREGIDO - DENTRO DE FORM)
                             contenido = archivo.get('contenido', b'')
                             if contenido:
-                                st.download_button(
-                                    label="📥 Descargar",
-                                    data=contenido,
-                                    file_name=nombre_archivo,
-                                    mime="application/octet-stream",
-                                    key=f"download_{archivo_key}",
-                                    use_container_width=True
-                                )
+                                # ID único para este archivo
+                                unique_id = f"download_{contrato_id}_{categoria}_{archivo.get('id', '0')}"
+                                
+                                # Convertir a base64
+                                b64 = base64.b64encode(contenido).decode()
+                                
+                                # Enlace oculto para descarga
+                                st.markdown(f'''
+                                <div style="display:none;">
+                                    <a id="{unique_id}_anchor" href="data:application/octet-stream;base64,{b64}" 
+                                       download="{nombre_archivo}">
+                                    </a>
+                                </div>
+                                ''', unsafe_allow_html=True)
+                                
+                                # Botón que activa la descarga vía JavaScript
+                                if st.form_submit_button("📥 Descargar", 
+                                                        use_container_width=True,
+                                                        key=f"submit_{unique_id}"):
+                                    # JavaScript para hacer clic en el enlace oculto
+                                    st.markdown(f'''
+                                    <script>
+                                    document.getElementById("{unique_id}_anchor").click();
+                                    </script>
+                                    ''', unsafe_allow_html=True)
                             else:
                                 st.warning("Sin contenido")
                         
