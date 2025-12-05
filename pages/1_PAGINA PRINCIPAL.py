@@ -8,7 +8,7 @@ import os
 import json
 import warnings
 
-from core.database import get_db_manager
+from core.database import get_db_manager_por_usuario  # ← CAMBIADO
 from core.config import UPLOAD_DIR, TEMPLATE_PATH, timestamp
 from core.ocr_utils import pdf_to_text
 from core.text_processing import extract_contract_data
@@ -191,7 +191,10 @@ def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
     Guarda el contrato automáticamente en PostgreSQL
     """
     try:
-        manager = get_db_manager()
+        # Obtener manager específico para el usuario ← CAMBIADO
+        usuario = st.session_state.get("usuario", "").upper()
+        manager = get_db_manager_por_usuario(usuario)  # ← CAMBIADO
+        
         if not manager:
             st.warning("⚠️ No se pudo conectar a la base de datos")
             return False
@@ -548,4 +551,3 @@ if st.session_state.get("excel_generado"):
         use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
-    

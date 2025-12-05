@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import os
 import base64
-from core.database import get_db_manager  
+from core.database import get_db_manager_por_usuario  
 import sys
 
 # --- CONFIGURACIÓN DE RUTAS ---
@@ -600,7 +600,8 @@ if 'contrato_eliminando' not in st.session_state:
     st.session_state.contrato_eliminando = None
 
 # Obtener manager de PostgreSQL
-manager = get_db_manager()
+usuario = st.session_state.get("usuario", "").upper()
+manager = get_db_manager_por_usuario(usuario)
 if not manager:
     st.error("❌ No se pudo conectar a PostgreSQL. Revisa la configuración.")
     st.stop()

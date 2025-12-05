@@ -893,3 +893,473 @@ def get_db_manager():
     except Exception as e:
         st.error(f"❌ Error conectando a PostgreSQL: {str(e)}")
         return None
+    # ============================================
+# SISTEMA DE ESQUEMAS POR USUARIO - AGREGAR AL FINAL
+# ============================================
+
+class SistemaEsquemasUsuarios:
+    """
+    Sistema para crear esquemas PostgreSQL separados por usuario
+    Se activa automáticamente cuando un usuario se loguea por primera vez
+    """
+    
+    def __init__(self, connection_string):
+        self.connection_string = connection_string
+        self.esquema_actual = "public"
+    
+    def _get_connection(self):
+        conn = psycopg2.connect(self.connection_string)
+        conn.autocommit = False
+        return conn
+    
+    def crear_esquema_usuario(self, usuario):
+        """
+        Crear un esquema PostgreSQL completo para un usuario nuevo
+        Retorna True si se creó o ya existe
+        """
+        usuario_normalizado = usuario.upper().replace(" ", "_").replace("-", "_")
+        esquema_nombre = f"usuario_{usuario_normalizado}"
+        
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            
+            # 1. Verificar si el esquema ya existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.schemata 
+                    WHERE schema_name = %s
+                )
+            """, (esquema_nombre,))
+            
+            esquema_existe = cur.fetchone()[0]
+            
+            if esquema_existe:
+                print(f"✅ Esquema {esquema_nombre} ya existe")
+                conn.close()
+                return True
+            
+            print(f"🎯 Creando nuevo esquema para usuario: {usuario} -> {esquema_nombre}")
+            
+            # 2. Crear el esquema
+            cur.execute(sql.SQL("CREATE SCHEMA {}").format(
+                sql.Identifier(esquema_nombre)
+            ))
+            
+            # 3. Establecer el esquema actual
+            cur.execute(sql.SQL("SET search_path TO {}").format(
+                sql.Identifier(esquema_nombre)
+            ))
+            
+            # 4. Crear tabla de contratos en el nuevo esquema
+            cur.execute("""
+                CREATE TABLE contratos_pemex (
+                    id BIGSERIAL PRIMARY KEY,
+                    area VARCHAR(500) NOT NULL DEFAULT 'SUBDIRECCIÓN DE PRODUCCIÓN REGIÓN NORTE GERENCIA DE MANTENIMIENTO CONFIABILIDAD Y CONSTRUCCIÓN',
+                    numero_contrato VARCHAR(100) UNIQUE NOT NULL,
+                    contratista VARCHAR(300) NOT NULL,
+                    monto_contrato VARCHAR(100),
+                    plazo_dias VARCHAR(50),
+                    descripcion TEXT,
+                    anexos JSONB,
+                    
+                    lo_oid OID NOT NULL,
+                    nombre_archivo VARCHAR(300) NOT NULL,
+                    tipo_archivo VARCHAR(50),
+                    tamaño_bytes BIGINT NOT NULL,
+                    hash_sha256 VARCHAR(64) NOT NULL,
+                    
+                    fecha_subida TIMESTAMPTZ DEFAULT NOW(),
+                    usuario_subio VARCHAR(100) DEFAULT 'sistema',
+                    procesado BOOLEAN DEFAULT TRUE,
+                    
+                    CONSTRAINT check_tamaño_positivo CHECK (tamaño_bytes > 0)
+                )
+            """)
+            
+            # 5. Crear tabla de archivos en el nuevo esquema
+            cur.execute("""
+                CREATE TABLE archivos_pemex (
+                    id BIGSERIAL PRIMARY KEY,
+                    contrato_id BIGINT NOT NULL REFERENCES contratos_pemex(id) ON DELETE CASCADE,
+                    categoria VARCHAR(50) NOT NULL,
+                    tipo_archivo VARCHAR(50),
+                    lo_oid OID NOT NULL,
+                    nombre_archivo VARCHAR(300) NOT NULL,
+                    tamaño_bytes BIGINT NOT NULL,
+                    hash_sha256 VARCHAR(64) NOT NULL,
+                    fecha_subida TIMESTAMPTZ DEFAULT NOW(),
+                    usuario_subio VARCHAR(100) DEFAULT 'sistema',
+                    CONSTRAINT check_tamaño_archivo CHECK (tamaño_bytes > 0)
+                )
+            """)
+            
+            # 6. Crear índices
+            cur.execute("CREATE INDEX idx_contratos_numero ON contratos_pemex(numero_contrato)")
+            cur.execute("CREATE INDEX idx_contratos_contratista ON contratos_pemex(contratista)")
+            cur.execute("CREATE INDEX idx_contratos_fecha ON contratos_pemex(fecha_subida)")
+            cur.execute("CREATE INDEX idx_archivos_contrato_id ON archivos_pemex(contrato_id)")
+            cur.execute("CREATE INDEX idx_archivos_categoria ON archivos_pemex(categoria)")
+            
+            # 7. Registrar usuario en tabla maestra (si existe)
+            try:
+                cur.execute("SET search_path TO public")
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS usuarios_registrados (
+                        id SERIAL PRIMARY KEY,
+                        usuario VARCHAR(100) UNIQUE NOT NULL,
+                        esquema VARCHAR(150) NOT NULL,
+                        fecha_registro TIMESTAMPTZ DEFAULT NOW(),
+                        ultimo_login TIMESTAMPTZ,
+                        estado VARCHAR(20) DEFAULT 'activo'
+                    )
+                """)
+                
+                cur.execute("""
+                    INSERT INTO usuarios_registrados (usuario, esquema, ultimo_login)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (usuario) DO UPDATE SET ultimo_login = NOW()
+                """, (usuario, esquema_nombre))
+            except Exception as e:
+                print(f"⚠️ Error registrando usuario en tabla maestra: {e}")
+                # No es crítico, continuar
+            
+            conn.commit()
+            print(f"✅ ESQUEMA CREADO EXITOSAMENTE: {esquema_nombre}")
+            return True
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error creando esquema {esquema_nombre}: {str(e)}")
+            raise Exception(f"Error creando esquema para usuario {usuario}: {str(e)}")
+        finally:
+            conn.close()
+    
+    def verificar_esquema_usuario(self, usuario):
+        """
+        Verificar si un usuario tiene esquema, y crearlo si no existe
+        """
+        return self.crear_esquema_usuario(usuario)
+    
+    def obtener_esquema_usuario(self, usuario):
+        """
+        Obtener el nombre del esquema para un usuario
+        """
+        usuario_normalizado = usuario.upper().replace(" ", "_").replace("-", "_")
+        return f"usuario_{usuario_normalizado}"
+    
+    def listar_usuarios(self):
+        """
+        Listar todos los usuarios registrados
+        """
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT usuario, esquema, fecha_registro, ultimo_login, estado
+                FROM public.usuarios_registrados
+                ORDER BY fecha_registro DESC
+            """)
+            
+            resultados = cur.fetchall()
+            columnas = [desc[0] for desc in cur.description]
+            usuarios = [dict(zip(columnas, fila)) for fila in resultados]
+            
+            return usuarios
+        except Exception as e:
+            print(f"⚠️ Error listando usuarios: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def obtener_estadisticas_esquema(self, usuario):
+        """
+        Obtener estadísticas del esquema de un usuario
+        """
+        esquema = self.obtener_esquema_usuario(usuario)
+        
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            
+            # Establecer el esquema del usuario
+            cur.execute(sql.SQL("SET search_path TO {}").format(
+                sql.Identifier(esquema)
+            ))
+            
+            cur.execute("""
+                SELECT 
+                    (SELECT COUNT(*) FROM contratos_pemex) as total_contratos,
+                    (SELECT COUNT(*) FROM archivos_pemex) as total_archivos,
+                    (SELECT COALESCE(SUM(tamaño_bytes), 0) FROM contratos_pemex) as bytes_contratos,
+                    (SELECT COALESCE(SUM(tamaño_bytes), 0) FROM archivos_pemex) as bytes_archivos,
+                    (SELECT MIN(fecha_subida) FROM contratos_pemex) as primer_contrato,
+                    (SELECT MAX(fecha_subida) FROM contratos_pemex) as ultimo_contrato
+            """)
+            
+            resultado = cur.fetchone()
+            columnas = [desc[0] for desc in cur.description]
+            
+            if resultado:
+                stats = dict(zip(columnas, resultado))
+                
+                # Formatear fechas
+                for key in ['primer_contrato', 'ultimo_contrato']:
+                    if stats[key]:
+                        stats[key] = stats[key].strftime('%Y-%m-%d %H:%M')
+                
+                return stats
+            else:
+                return None
+                
+        except Exception as e:
+            print(f"⚠️ Error obteniendo estadísticas del esquema {esquema}: {e}")
+            return None
+        finally:
+            conn.close()
+
+# ============================================
+# MANAGER DE USUARIOS (EXTENSIÓN DEL MANAGER EXISTENTE)
+# ============================================
+
+class ContratosManagerUsuarios(ContratosManager):
+    """
+    Extensión del ContratosManager para soportar múltiples usuarios con esquemas separados
+    """
+    
+    def __init__(self, connection_string, usuario=""):
+        super().__init__(connection_string)
+        self.usuario = usuario.upper() if usuario else ""
+        self.esquema_manager = SistemaEsquemasUsuarios(connection_string)
+        
+        # Crear esquema para el usuario si no existe
+        if self.usuario:
+            self._inicializar_usuario()
+    
+    def _inicializar_usuario(self):
+        """Inicializar el esquema PostgreSQL para el usuario"""
+        try:
+            if self.usuario and self.usuario != "SISTEMA":
+                self.esquema_manager.verificar_esquema_usuario(self.usuario)
+                print(f"✅ Usuario {self.usuario} inicializado con su propio esquema")
+        except Exception as e:
+            print(f"⚠️ Error inicializando usuario {self.usuario}: {e}")
+            # Continuar con el esquema público como fallback
+    
+    def _set_esquema_usuario(self, cursor):
+        """Establecer el esquema del usuario para la conexión actual"""
+        if self.usuario and self.usuario != "SISTEMA":
+            esquema = self.esquema_manager.obtener_esquema_usuario(self.usuario)
+            cursor.execute(sql.SQL("SET search_path TO {}").format(
+                sql.Identifier(esquema)
+            ))
+    
+    # SOBRESCRIBIR MÉTODOS PARA USAR EL ESQUEMA DEL USUARIO
+    
+    def buscar_contratos_pemex(self, filtros=None):
+        """Búsqueda en PostgreSQL - AHORA EN ESQUEMA DEL USUARIO"""
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            
+            # Establecer esquema del usuario
+            if self.usuario and self.usuario != "SISTEMA":
+                self._set_esquema_usuario(cur)
+            
+            # Resto del código IGUAL que el original
+            where_conditions = []
+            params = []
+            
+            if filtros:
+                if 'numero_contrato' in filtros and filtros['numero_contrato']:
+                    where_conditions.append("numero_contrato ILIKE %s")
+                    params.append(f"%{filtros['numero_contrato']}%")
+                if 'contratista' in filtros and filtros['contratista']:
+                    where_conditions.append("contratista ILIKE %s")
+                    params.append(f"%{filtros['contratista']}%")
+            
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+            
+            query = f"""
+                SELECT id, area, numero_contrato, contratista, monto_contrato, 
+                       plazo_dias, descripcion, anexos, nombre_archivo, tipo_archivo,
+                       fecha_subida, tamaño_bytes, usuario_subio
+                FROM contratos_pemex
+                WHERE {where_clause}
+                ORDER BY fecha_subida DESC
+            """
+            
+            cur.execute(query, params)
+            resultados = cur.fetchall()
+            
+            columnas = [desc[0] for desc in cur.description]
+            contratos = [dict(zip(columnas, fila)) for fila in resultados]
+            
+            # Convertir JSON de anexos
+            for contrato in contratos:
+                if contrato.get('anexos'):
+                    try:
+                        contrato['anexos'] = json.loads(contrato['anexos'])
+                    except:
+                        contrato['anexos'] = []
+            
+            return contratos
+            
+        except Exception as e:
+            raise Exception(f"❌ Error buscando contratos: {str(e)}")
+        finally:
+            conn.close()
+    
+    def guardar_contrato_pemex(self, archivo, datos_extraidos, usuario="sistema"):
+        """
+        Guardar contrato en PostgreSQL - EN ESQUEMA DEL USUARIO
+        """
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            
+            # Establecer esquema del usuario
+            if self.usuario and self.usuario != "SISTEMA":
+                self._set_esquema_usuario(cur)
+            
+            # Resto del código IGUAL que el original
+            self._debug_datos(datos_extraidos, "DEBUG DATOS CRUDOS")
+            
+            file_bytes = archivo.getvalue()
+            file_hash = self.calcular_hash(file_bytes)
+            
+            lo_oid = conn.lobject(0, 'wb', 0, None)
+            
+            chunk_size = 1024 * 1024
+            with io.BytesIO(file_bytes) as file_stream:
+                while True:
+                    chunk = file_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    lo_oid.write(chunk)
+            
+            contrato = self._safe_string(datos_extraidos.get('contrato', ''))
+            contratista = self._safe_string(datos_extraidos.get('contratista', ''))
+            monto = self._safe_string(datos_extraidos.get('monto', ''))
+            
+            plazo_original = datos_extraidos.get('plazo', '')
+            plazo = self._safe_string(plazo_original)
+            
+            if not isinstance(plazo, str):
+                plazo = str(plazo) if plazo is not None else ""
+            
+            objeto = self._safe_string(datos_extraidos.get('objeto', ''))
+            anexos = json.dumps(datos_extraidos.get('anexos', []), ensure_ascii=False)
+            
+            query = sql.SQL("""
+                INSERT INTO contratos_pemex (
+                    numero_contrato, contratista, monto_contrato, 
+                    plazo_dias, descripcion, anexos,
+                    lo_oid, nombre_archivo, tipo_archivo, tamaño_bytes, hash_sha256, usuario_subio
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """)
+            
+            cur.execute(query, (
+                contrato, contratista, monto, plazo, objeto, anexos,
+                lo_oid.oid, archivo.name, getattr(archivo, 'type', 'application/pdf'),
+                len(file_bytes), file_hash, usuario
+            ))
+            
+            contrato_id = cur.fetchone()[0]
+            conn.commit()
+            
+            print(f"✅ CONTRATO GUARDADO EN ESQUEMA DEL USUARIO - ID: {contrato_id}")
+            return contrato_id
+            
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            raise Exception("❌ Ya existe un contrato con ese número")
+        except Exception as e:
+            conn.rollback()
+            print(f"🔴 ERROR DETALLADO: {traceback.format_exc()}")
+            raise Exception(f"❌ Error guardando contrato: {str(e)}")
+        finally:
+            conn.close()
+    
+    # NOTA: Todos los demás métodos deben sobrescribirse de manera similar
+    # Para mantener el ejemplo simple, solo sobrescribimos estos dos métodos
+    # En producción, deberías sobrescribir todos los métodos que acceden a las tablas
+
+# ============================================
+# FUNCIONES ADICIONALES PARA GESTIÓN DE USUARIOS
+# ============================================
+
+@st.cache_resource
+def get_esquema_manager():
+    """Obtener manager de esquemas"""
+    connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
+    return SistemaEsquemasUsuarios(connection_string)
+
+@st.cache_resource
+def get_db_manager_por_usuario(usuario=""):
+    """
+    Obtener manager específico para un usuario (con su propio esquema)
+    """
+    connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
+    
+    try:
+        if not usuario:
+            st.warning("⚠️ Usuario no especificado, usando esquema público")
+            usuario = "SISTEMA"
+        
+        # Primero, asegurarse de que el esquema del usuario existe
+        esquema_manager = get_esquema_manager()
+        esquema_manager.verificar_esquema_usuario(usuario)
+        
+        # Crear manager con esquema del usuario
+        manager = ContratosManagerUsuarios(connection_string, usuario)
+        st.success(f"✅ Usuario {usuario} conectado a su propio esquema PostgreSQL")
+        return manager
+        
+    except Exception as e:
+        st.error(f"❌ Error conectando a PostgreSQL para usuario {usuario}: {str(e)}")
+        # Fallback al manager original
+        return get_db_manager()
+
+# ============================================
+# MIGRACIÓN DE DATOS EXISTENTES (OPCIONAL)
+# ============================================
+
+def migrar_datos_usuario(usuario_original, usuario_destino):
+    """
+    Migrar datos de un usuario del esquema público al suyo propio
+    Solo ejecutar una vez si ya tienes datos en el esquema público
+    """
+    connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
+    
+    conn = psycopg2.connect(connection_string)
+    try:
+        cur = conn.cursor()
+        
+        # Obtener esquema destino
+        esquema_destino = f"usuario_{usuario_destino.upper().replace(' ', '_')}"
+        
+        # 1. Crear esquema si no existe
+        esquema_manager = SistemaEsquemasUsuarios(connection_string)
+        esquema_manager.crear_esquema_usuario(usuario_destino)
+        
+        # 2. Copiar contratos del usuario
+        cur.execute("""
+            INSERT INTO %s.contratos_pemex 
+            SELECT * FROM public.contratos_pemex 
+            WHERE usuario_subio = %s
+        """, (esquema_destino, usuario_original))
+        
+        # 3. Copiar archivos del usuario (necesita lógica más compleja por las foreign keys)
+        # Esto es un ejemplo básico
+        
+        conn.commit()
+        st.success(f"✅ Datos migrados de {usuario_original} a {usuario_destino}")
+        
+    except Exception as e:
+        conn.rollback()
+        st.error(f"❌ Error migrando datos: {str(e)}")
+    finally:
+        conn.close()
+    

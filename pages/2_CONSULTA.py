@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import base64
 import json 
-from core.database import get_db_manager  # Importar el nuevo manager
+from core.database import get_db_manager_por_usuario # Importar el nuevo manager
 
 # --- Configuración de rutas ---
 BASE_DIR = Path("data")
@@ -314,7 +314,8 @@ with st.form("form_consulta", clear_on_submit=False):
     # ==================================================
     #  MODO BASE DE DATOS POSTGRESQL (ÚNICO MODO AHORA)
     # ==================================================
-    manager = get_db_manager()
+    usuario = st.session_state.get("usuario", "").upper()
+    manager = get_db_manager_por_usuario(usuario)
     if not manager:
         st.error("❌ No se pudo conectar a la base de datos PostgreSQL")
         st.info("💡 Verifica que DATABASE_URL esté configurada en los secrets")
@@ -488,4 +489,3 @@ with st.form("form_consulta", clear_on_submit=False):
     
     if actualizar or nueva_busqueda:
         st.rerun()
-
