@@ -6,6 +6,7 @@ import os
 import base64
 from core.database import get_db_manager_por_usuario  
 import sys
+import psycopg2
 
 # --- CONFIGURACIÓN DE RUTAS ---
 assets_dir = Path(__file__).parent.parent / "assets"
@@ -44,44 +45,39 @@ def obtener_contratos_postgresql(manager):
 def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_archivo):
     """✅ VERSIÓN CORREGIDA Y FUNCIONAL: Guardar archivo individual en PostgreSQL"""
     try:
-        # LEER el contenido del archivo primero (esto es lo que fallaba)
+        # LEER el contenido del archivo primero
         archivo_bytes = archivo.read()
         
         # Volver al inicio del archivo
         archivo.seek(0)
         
-        # Verificar que el manager tenga el método CORRECTO
-        # Opción 1: Si tiene guardar_archivo_completo
-        if hasattr(manager, 'guardar_archivo_completo'):
-            archivo_id = manager.guardar_archivo_completo(
-                contrato_id, archivo, categoria, tipo_archivo, nombre
-            )
-        # Opción 2: Si tiene guardar_archivo_streamlit (MÉTODO NUEVO QUE SÍ EXISTE)
-        elif hasattr(manager, 'guardar_archivo_streamlit'):
-            archivo_id = manager.guardar_archivo_streamlit(
-                contrato_id=contrato_id,
-                archivo_streamlit=archivo,
-                categoria=categoria,
-                usuario=nombre
-            )
-        # Opción 3: Si tiene insertar_archivo
-        elif hasattr(manager, 'insertar_archivo'):
-            archivo_id = manager.insertar_archivo(
-                contrato_id=contrato_id,
-                nombre_archivo=archivo.name,
-                categoria=categoria,
-                contenido=archivo_bytes
-            )
-        # Opción 4: Usar método alternativo si no hay ninguno
-        else:
-            # Intentar guardar usando obtener_archivos si no hay método específico
-            st.warning("⚠️ No se encontró método específico para guardar, intentando método alternativo...")
-            return False, "❌ No se encontró un método para guardar archivos"
+        # ✅ PRIMERO intentar guardar_archivo_streamlit (método específico para Streamlit)
+        if hasattr(manager, 'guardar_archivo_streamlit'):
+            try:
+                archivo_id = manager.guardar_archivo_streamlit(
+                    contrato_id=contrato_id,
+                    archivo_streamlit=archivo,
+                    categoria=categoria,
+                    usuario=nombre
+                )
+                if archivo_id:
+                    return True, f"✅ {archivo.name} guardado exitosamente (ID: {archivo_id})"
+            except Exception as e:
+                st.warning(f"⚠️ Error con guardar_archivo_streamlit: {e}, intentando otro método...")
         
-        if archivo_id:
-            return True, f"✅ {archivo.name} guardado exitosamente (ID: {archivo_id})"
-        else:
-            return False, "❌ No se pudo obtener ID del archivo guardado"
+        # ✅ SEGUNDO intentar guardar_archivo_completo
+        if hasattr(manager, 'guardar_archivo_completo'):
+            try:
+                archivo_id = manager.guardar_archivo_completo(
+                    contrato_id, archivo, categoria, tipo_archivo, nombre
+                )
+                if archivo_id:
+                    return True, f"✅ {archivo.name} guardado exitosamente (ID: {archivo_id})"
+            except Exception as e:
+                st.warning(f"⚠️ Error con guardar_archivo_completo: {e}")
+        
+        # ❌ Si no se pudo guardar con ninguno de los métodos anteriores
+        return False, "❌ No se encontró un método válido para guardar archivos"
             
     except Exception as e:
         # DEBUG: Mostrar error detallado
@@ -91,160 +87,142 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
         return False, f"❌ Error guardando: {str(e)}"
 
 def obtener_archivos_por_contrato(manager, contrato_id):
-    """✅ FUNCIÓN ROBUSTA CORREGIDA: Obtener todos los archivos de un contrato"""
+    """✅ FUNCIÓN SIMPLIFICADA Y CORREGIDA: Obtener todos los archivos de un contrato"""
     try:
-        archivos = []
-        
-        # Método 1: Intentar usar método directo si existe
-        try:
-            if hasattr(manager, 'obtener_archivos_por_contrato'):
-                archivos_directo = manager.obtener_archivos_por_contrato(contrato_id)
-                if archivos_directo:
-                    return archivos_directo
-        except:
-            pass
-        
-        # Método 2: Buscar por categorías individuales
-        categorias = ['CONTRATO', 'ANEXOS', 'CEDULAS', 'SOPORTES FISICOS']
-        
-        for categoria in categorias:
+        # Método directo si existe
+        if hasattr(manager, 'obtener_archivos_por_contrato'):
             try:
-                # Intentar diferentes nombres de métodos
-                metodo_nombres = [
-                    f'get_{categoria.lower()}',  # get_contrato, get_anexos, etc.
-                    f'obtener_{categoria.lower()}',
-                    f'obtener_archivos_{categoria.lower()}',
-                    'obtener_archivos'  # Método genérico
-                ]
-                
-                archivos_encontrados = None
-                
-                for metodo_nombre in metodo_nombres:
-                    if hasattr(manager, metodo_nombre):
-                        try:
-                            if metodo_nombre == 'obtener_archivos':
-                                # Método que necesita parámetros
-                                archivos_categoria = manager.obtener_archivos(contrato_id, categoria)
-                            else:
-                                # Método específico por categoría
-                                archivos_categoria = getattr(manager, metodo_nombre)(contrato_id)
-                            
-                            if archivos_categoria:
-                                archivos_encontrados = archivos_categoria
-                                break
-                        except Exception:
-                            continue
-                
-                # Procesar archivos encontrados
-                if archivos_encontrados:
-                    # Normalizar la respuesta (puede ser lista de objetos o diccionarios)
-                    for archivo in archivos_encontrados:
-                        if isinstance(archivo, dict):
-                            archivo_data = archivo
-                        else:
-                            # Asumir que es un objeto con atributos
-                            archivo_data = {
-                                'id': getattr(archivo, 'id', 0),
-                                'nombre_archivo': getattr(archivo, 'nombre_archivo', 'desconocido'),
-                                'categoria': categoria,
-                                'tamaño_bytes': getattr(archivo, 'tamaño_bytes', 0),
-                                'contenido': getattr(archivo, 'contenido', b'')
-                            }
-                        
-                        archivos.append(archivo_data)
-                        
-            except Exception as cat_error:
-                continue  # Si no hay archivos en esa categoría, continuamos
+                archivos = manager.obtener_archivos_por_contrato(contrato_id)
+                if archivos:
+                    return archivos
+            except Exception as e:
+                st.warning(f"⚠️ Error con obtener_archivos_por_contrato: {e}")
         
-        # Método 3: Si no encontramos nada, intentar con obtener_archivos sin categoría
-        if not archivos:
+        # Método alternativo
+        if hasattr(manager, 'obtener_archivos'):
             try:
-                archivos_todos = manager.obtener_archivos(contrato_id)
-                if archivos_todos:
-                    return archivos_todos
-            except Exception as sql_error:
-                st.warning(f"⚠️ No se pudieron obtener archivos: {sql_error}")
+                archivos = manager.obtener_archivos(contrato_id)
+                return archivos
+            except Exception as e:
+                st.warning(f"⚠️ Error con obtener_archivos: {e}")
         
-        return archivos
+        # Si no hay métodos disponibles
+        st.error("⚠️ El manager no tiene métodos para obtener archivos")
+        return []
         
     except Exception as e:
         st.error(f"⚠️ Error obteniendo archivos: {str(e)}")
         return []
 
 def eliminar_archivo_postgresql(manager, archivo_id, categoria):
-    """✅ FUNCIÓN ROBUSTA: Eliminar archivo de PostgreSQL"""
+    """✅ FUNCIÓN SIMPLIFICADA: Eliminar archivo de PostgreSQL"""
     try:
-        # Intentar diferentes métodos de eliminación
-        success = False
-        
-        # Método 1: Método directo
+        # Método directo
         if hasattr(manager, 'eliminar_archivo'):
             try:
                 success = manager.eliminar_archivo(archivo_id, categoria)
-            except Exception:
-                pass
+                if success:
+                    return True, "✅ Archivo eliminado correctamente"
+                else:
+                    return False, "❌ No se pudo eliminar el archivo"
+            except Exception as e:
+                return False, f"❌ Error eliminando archivo: {str(e)}"
         
-        # Método 2: Método alternativo
-        if not success and hasattr(manager, 'delete_archivo'):
-            try:
-                success = manager.delete_archivo(archivo_id)
-            except Exception:
-                pass
-        
-        # Método 3: Intentar eliminar sin categoría
-        if not success and hasattr(manager, 'eliminar_archivo'):
-            try:
-                success = manager.eliminar_archivo(archivo_id)
-            except Exception:
-                pass
-        
-        if success:
-            return True, "✅ Archivo eliminado correctamente"
-        else:
-            return False, "❌ No se pudo eliminar el archivo"
+        return False, "❌ No se encontró método para eliminar archivos"
             
     except Exception as e:
         return False, f"❌ Error eliminando archivo: {str(e)}"
 
 def eliminar_contrato_postgresql(manager, contrato_id):
-    """✅ FUNCIÓN ROBUSTA: Eliminar contrato completo de PostgreSQL"""
+    """✅ FUNCIÓN SIMPLIFICADA: Eliminar contrato completo de PostgreSQL"""
     try:
-        success = False
-        
-        # Método 1: Método directo
+        # Método directo
         if hasattr(manager, 'eliminar_contrato'):
             try:
                 success = manager.eliminar_contrato(contrato_id)
-            except Exception:
-                pass
+                if success:
+                    return True, "✅ Contrato eliminado completamente"
+                else:
+                    return False, "❌ No se pudo eliminar el contrato"
+            except Exception as e:
+                return False, f"❌ Error eliminando contrato: {str(e)}"
         
-        # Método 2: Método alternativo
-        if not success and hasattr(manager, 'delete_contrato'):
-            try:
-                success = manager.delete_contrato(contrato_id)
-            except Exception:
-                pass
-        
-        # Método 3: Intentar eliminar archivos primero y luego el contrato
-        if not success:
-            try:
-                # Primero eliminar archivos asociados si existe el método
-                if hasattr(manager, 'eliminar_archivos_contrato'):
-                    manager.eliminar_archivos_contrato(contrato_id)
-                
-                # Luego eliminar el contrato
-                if hasattr(manager, 'eliminar_contrato'):
-                    success = manager.eliminar_contrato(contrato_id)
-            except Exception:
-                pass
-        
-        if success:
-            return True, "✅ Contrato eliminado completamente"
-        else:
-            return False, "❌ No se pudo eliminar el contrato (método no disponible)"
+        return False, "❌ No se encontró método para eliminar contratos"
             
     except Exception as e:
         return False, f"❌ Error eliminando contrato: {str(e)}"
+
+# ============================================
+# FUNCIONES DE DIAGNÓSTICO MEJORADAS
+# ============================================
+
+def diagnosticar_esquema_postgresql(manager):
+    """Diagnosticar el estado del esquema PostgreSQL"""
+    st.sidebar.markdown("### 🔍 DIAGNÓSTICO ESQUEMA")
+    
+    # Información básica
+    st.sidebar.write(f"**Tipo de Manager:** {type(manager).__name__}")
+    
+    if hasattr(manager, 'usuario'):
+        st.sidebar.write(f"**Usuario:** {manager.usuario}")
+        
+        # Verificar métodos disponibles
+        metodos_archivos = [m for m in dir(manager) if 'archivo' in m.lower() and not m.startswith('_')]
+        st.sidebar.write(f"**Métodos de archivos:** {len(metodos_archivos)}")
+        
+        # Contar contratos
+        try:
+            contratos = manager.buscar_contratos_pemex({})
+            st.sidebar.write(f"**Contratos en esquema:** {len(contratos)}")
+            
+            # Contar archivos totales
+            total_archivos = 0
+            for contrato in contratos[:3]:  # Solo primeros 3 para no sobrecargar
+                archivos = obtener_archivos_por_contrato(manager, contrato['id'])
+                total_archivos += len(archivos)
+            
+            st.sidebar.write(f"**Archivos totales (primeros 3 contratos):** {total_archivos}")
+            
+        except Exception as e:
+            st.sidebar.error(f"Error diagnóstico: {e}")
+    
+    # Botón para diagnóstico detallado
+    if st.sidebar.button("🔍 Diagnóstico Detallado"):
+        with st.spinner("Ejecutando diagnóstico..."):
+            try:
+                # Verificar conexión directa a PostgreSQL
+                conn = psycopg2.connect("postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos")
+                cur = conn.cursor()
+                
+                # Listar esquemas
+                cur.execute("""
+                    SELECT schema_name 
+                    FROM information_schema.schemata 
+                    WHERE schema_name LIKE 'usuario_%' OR schema_name = 'public'
+                    ORDER BY schema_name
+                """)
+                
+                esquemas = cur.fetchall()
+                
+                st.sidebar.markdown("### 📊 Esquemas PostgreSQL")
+                for (esquema,) in esquemas:
+                    try:
+                        # Contar tablas en cada esquema
+                        cur.execute(f"""
+                            SELECT COUNT(*) 
+                            FROM information_schema.tables 
+                            WHERE table_schema = '{esquema}'
+                        """)
+                        tablas = cur.fetchone()[0]
+                        st.sidebar.write(f"**{esquema}**: {tablas} tablas")
+                    except:
+                        st.sidebar.write(f"**{esquema}**: Error")
+                
+                conn.close()
+                st.sidebar.success("✅ Diagnóstico completado")
+                
+            except Exception as e:
+                st.sidebar.error(f"❌ Error diagnóstico PostgreSQL: {e}")
 
 # ============================================
 # CONFIGURACIÓN ESPECIAL PARA RENDER
@@ -272,57 +250,6 @@ def configurar_para_render():
 # Ejecutar configuración si es necesario
 if __name__ == '__main__':
     configurar_para_render()
-
-# ==============================
-#  DIAGNÓSTICO RÁPIDO
-# ==============================
-
-def verificar_metodos_manager(manager):
-    """Verificar qué métodos tiene disponible el manager"""
-    st.sidebar.markdown("### 🔍 DIAGNÓSTICO")
-    
-    if st.sidebar.button("Ver métodos disponibles"):
-        metodos = [m for m in dir(manager) if not m.startswith('_')]
-        st.sidebar.write(f"**Total métodos:** {len(metodos)}")
-        
-        # Buscar métodos relacionados con archivos
-        metodos_archivos = [m for m in metodos if 'archivo' in m.lower()]
-        st.sidebar.write("**Métodos de archivos:**")
-        for metodo in metodos_archivos:
-            st.sidebar.write(f"- {metodo}")
-    
-    if st.sidebar.button("Ver tablas en DB"):
-        try:
-            # Usar métodos indirectos para verificar tablas
-            success, contratos = obtener_contratos_postgresql(manager)
-            if success:
-                st.sidebar.success("✅ Tabla contratos_pemex existe")
-            else:
-                st.sidebar.error("❌ No se pudo acceder a la tabla contratos_pemex")
-            
-            # Verificar si hay archivos
-            if success and contratos:
-                for contrato in contratos[:1]:  # Solo el primer contrato
-                    archivos = obtener_archivos_por_contrato(manager, contrato['id'])
-                    st.sidebar.info(f"Archivos en contrato {contrato['id']}: {len(archivos)}")
-                    break
-        except Exception as e:
-            st.sidebar.error(f"Error: {e}")
-    
-    if st.sidebar.button("Contar archivos en DB"):
-        try:
-            # Contar archivos usando métodos existentes
-            total_archivos = 0
-            success, contratos = obtener_contratos_postgresql(manager)
-            if success:
-                for contrato in contratos:
-                    archivos = obtener_archivos_por_contrato(manager, contrato['id'])
-                    total_archivos += len(archivos)
-                st.sidebar.info(f"Archivos en DB: {total_archivos}")
-            else:
-                st.sidebar.error("No se pudieron obtener contratos")
-        except Exception as e:
-            st.sidebar.error(f"Error contando archivos: {e}")
 
 # --- Mensaje informativo al final ---
 st.markdown(
@@ -606,8 +533,8 @@ if not manager:
     st.error("❌ No se pudo conectar a PostgreSQL. Revisa la configuración.")
     st.stop()
 
-# 🔍 DIAGNÓSTICO (opcional - descomenta si necesitas)
-# verificar_metodos_manager(manager)
+# 🔍 DIAGNÓSTICO (siempre visible)
+diagnosticar_esquema_postgresql(manager)
 
 with st.form("form_gestion_archivos", clear_on_submit=True):
     
@@ -770,7 +697,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
             st.session_state.contrato_eliminando = None
             st.rerun()
         
-        # ✅ Obtener archivos del contrato usando la función robusta corregida
+        # ✅ Obtener archivos del contrato usando la función simplificada
         with st.spinner("Buscando archivos..."):
             archivos = obtener_archivos_por_contrato(manager, contrato_id)
         
@@ -817,7 +744,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
                                 st.markdown(f"*Tamaño: Desconocido*")
                         
                         with col2:
-                            # ✅ BOTÓN DE DESCARGA FUNCIONAL (CORREGIDO - DENTRO DE FORM)
+                            # ✅ BOTÓN DE DESCARGA FUNCIONAL
                             contenido = archivo.get('contenido', b'')
                             if contenido:
                                 # ID único para este archivo

@@ -893,8 +893,9 @@ def get_db_manager():
     except Exception as e:
         st.error(f"❌ Error conectando a PostgreSQL: {str(e)}")
         return None
-    # ============================================
-# SISTEMA DE ESQUEMAS POR USUARIO - AGREGAR AL FINAL
+
+# ============================================
+# SISTEMA DE ESQUEMAS POR USUARIO - VERSIÓN CORREGIDA
 # ============================================
 
 class SistemaEsquemasUsuarios:
@@ -905,7 +906,6 @@ class SistemaEsquemasUsuarios:
     
     def __init__(self, connection_string):
         self.connection_string = connection_string
-        self.esquema_actual = "public"
     
     def _get_connection(self):
         conn = psycopg2.connect(self.connection_string)
@@ -981,7 +981,7 @@ class SistemaEsquemasUsuarios:
             cur.execute("""
                 CREATE TABLE archivos_pemex (
                     id BIGSERIAL PRIMARY KEY,
-                    contrato_id BIGINT NOT NULL REFERENCES contratos_pemex(id) ON DELETE CASCADE,
+                    contrato_id BIGINT NOT NULL,
                     categoria VARCHAR(50) NOT NULL,
                     tipo_archivo VARCHAR(50),
                     lo_oid OID NOT NULL,
@@ -1119,21 +1119,21 @@ class SistemaEsquemasUsuarios:
             conn.close()
 
 # ============================================
-# MANAGER DE USUARIOS (EXTENSIÓN DEL MANAGER EXISTENTE)
+# MANAGER DE USUARIOS CORREGIDO - VERSIÓN COMPLETA
 # ============================================
 
 class ContratosManagerUsuarios(ContratosManager):
     """
-    Extensión del ContratosManager para soportar múltiples usuarios con esquemas separados
+    VERSIÓN CORREGIDA Y COMPLETA - Maneja esquemas PostgreSQL separados por usuario
     """
     
     def __init__(self, connection_string, usuario=""):
         super().__init__(connection_string)
-        self.usuario = usuario.upper() if usuario else ""
+        self.usuario = usuario.upper() if usuario else "SISTEMA"
         self.esquema_manager = SistemaEsquemasUsuarios(connection_string)
         
         # Crear esquema para el usuario si no existe
-        if self.usuario:
+        if self.usuario and self.usuario != "SISTEMA":
             self._inicializar_usuario()
     
     def _inicializar_usuario(self):
@@ -1142,31 +1142,114 @@ class ContratosManagerUsuarios(ContratosManager):
             if self.usuario and self.usuario != "SISTEMA":
                 self.esquema_manager.verificar_esquema_usuario(self.usuario)
                 print(f"✅ Usuario {self.usuario} inicializado con su propio esquema")
+                
+                # Crear tablas en el esquema del usuario
+                self._crear_tablas_en_esquema_usuario()
         except Exception as e:
             print(f"⚠️ Error inicializando usuario {self.usuario}: {e}")
-            # Continuar con el esquema público como fallback
     
-    def _set_esquema_usuario(self, cursor):
-        """Establecer el esquema del usuario para la conexión actual"""
-        if self.usuario and self.usuario != "SISTEMA":
-            esquema = self.esquema_manager.obtener_esquema_usuario(self.usuario)
-            cursor.execute(sql.SQL("SET search_path TO {}").format(
-                sql.Identifier(esquema)
-            ))
-    
-    # SOBRESCRIBIR MÉTODOS PARA USAR EL ESQUEMA DEL USUARIO
-    
-    def buscar_contratos_pemex(self, filtros=None):
-        """Búsqueda en PostgreSQL - AHORA EN ESQUEMA DEL USUARIO"""
+    def _crear_tablas_en_esquema_usuario(self):
+        """Crear tablas en el esquema del usuario"""
+        if not self.usuario or self.usuario == "SISTEMA":
+            return
+        
         conn = self._get_connection()
         try:
             cur = conn.cursor()
             
             # Establecer esquema del usuario
-            if self.usuario and self.usuario != "SISTEMA":
-                self._set_esquema_usuario(cur)
+            esquema = self.esquema_manager.obtener_esquema_usuario(self.usuario)
+            cur.execute(sql.SQL("SET search_path TO {}").format(
+                sql.Identifier(esquema)
+            ))
             
-            # Resto del código IGUAL que el original
+            # 1. Crear tabla contratos_pemex si no existe
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS contratos_pemex (
+                    id BIGSERIAL PRIMARY KEY,
+                    area VARCHAR(500) NOT NULL DEFAULT 'SUBDIRECCIÓN DE PRODUCCIÓN REGIÓN NORTE GERENCIA DE MANTENIMIENTO CONFIABILIDAD Y CONSTRUCCIÓN',
+                    numero_contrato VARCHAR(100) UNIQUE NOT NULL,
+                    contratista VARCHAR(300) NOT NULL,
+                    monto_contrato VARCHAR(100),
+                    plazo_dias VARCHAR(50),
+                    descripcion TEXT,
+                    anexos JSONB,
+                    
+                    lo_oid OID NOT NULL,
+                    nombre_archivo VARCHAR(300) NOT NULL,
+                    tipo_archivo VARCHAR(50),
+                    tamaño_bytes BIGINT NOT NULL,
+                    hash_sha256 VARCHAR(64) NOT NULL,
+                    
+                    fecha_subida TIMESTAMPTZ DEFAULT NOW(),
+                    usuario_subio VARCHAR(100) DEFAULT 'sistema',
+                    procesado BOOLEAN DEFAULT TRUE,
+                    
+                    CONSTRAINT check_tamaño_positivo CHECK (tamaño_bytes > 0)
+                )
+            """)
+            
+            # 2. Crear tabla archivos_pemex si no existe
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS archivos_pemex (
+                    id BIGSERIAL PRIMARY KEY,
+                    contrato_id BIGINT NOT NULL,
+                    categoria VARCHAR(50) NOT NULL,
+                    tipo_archivo VARCHAR(50),
+                    lo_oid OID NOT NULL,
+                    nombre_archivo VARCHAR(300) NOT NULL,
+                    tamaño_bytes BIGINT NOT NULL,
+                    hash_sha256 VARCHAR(64) NOT NULL,
+                    fecha_subida TIMESTAMPTZ DEFAULT NOW(),
+                    usuario_subio VARCHAR(100) DEFAULT 'sistema',
+                    CONSTRAINT check_tamaño_archivo CHECK (tamaño_bytes > 0)
+                )
+            """)
+            
+            # 3. Crear índices
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_contratos_numero ON contratos_pemex(numero_contrato)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_contratos_contratista ON contratos_pemex(contratista)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_contratos_fecha ON contratos_pemex(fecha_subida)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_archivos_contrato_id ON archivos_pemex(contrato_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_archivos_categoria ON archivos_pemex(categoria)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_archivos_fecha ON archivos_pemex(fecha_subida)")
+            
+            conn.commit()
+            print(f"✅ Tablas creadas en esquema {esquema}")
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"⚠️ Error creando tablas en esquema usuario: {e}")
+        finally:
+            conn.close()
+    
+    def _get_connection_with_schema(self):
+        """Obtener conexión CON el esquema del usuario establecido"""
+        conn = self._get_connection()
+        
+        if self.usuario and self.usuario != "SISTEMA":
+            try:
+                esquema = self.esquema_manager.obtener_esquema_usuario(self.usuario)
+                cur = conn.cursor()
+                cur.execute(sql.SQL("SET search_path TO {}").format(
+                    sql.Identifier(esquema)
+                ))
+                cur.close()
+                conn.commit()  # Confirmar el cambio de esquema
+                print(f"🔧 Conexión establecida al esquema: {esquema}")
+            except Exception as e:
+                print(f"⚠️ Error estableciendo esquema: {e}")
+        
+        return conn
+    
+    # ========== MÉTODOS SOBRESCRITOS PARA ESQUEMAS POR USUARIO ==========
+    
+    def buscar_contratos_pemex(self, filtros=None):
+        """Búsqueda en PostgreSQL - EN ESQUEMA DEL USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
             where_conditions = []
             params = []
             
@@ -1206,7 +1289,7 @@ class ContratosManagerUsuarios(ContratosManager):
             return contratos
             
         except Exception as e:
-            raise Exception(f"❌ Error buscando contratos: {str(e)}")
+            raise Exception(f"❌ Error buscando contratos en esquema usuario: {str(e)}")
         finally:
             conn.close()
     
@@ -1214,15 +1297,8 @@ class ContratosManagerUsuarios(ContratosManager):
         """
         Guardar contrato en PostgreSQL - EN ESQUEMA DEL USUARIO
         """
-        conn = self._get_connection()
+        conn = self._get_connection_with_schema()
         try:
-            cur = conn.cursor()
-            
-            # Establecer esquema del usuario
-            if self.usuario and self.usuario != "SISTEMA":
-                self._set_esquema_usuario(cur)
-            
-            # Resto del código IGUAL que el original
             self._debug_datos(datos_extraidos, "DEBUG DATOS CRUDOS")
             
             file_bytes = archivo.getvalue()
@@ -1260,6 +1336,7 @@ class ContratosManagerUsuarios(ContratosManager):
                 RETURNING id
             """)
             
+            cur = conn.cursor()
             cur.execute(query, (
                 contrato, contratista, monto, plazo, objeto, anexos,
                 lo_oid.oid, archivo.name, getattr(archivo, 'type', 'application/pdf'),
@@ -1269,7 +1346,7 @@ class ContratosManagerUsuarios(ContratosManager):
             contrato_id = cur.fetchone()[0]
             conn.commit()
             
-            print(f"✅ CONTRATO GUARDADO EN ESQUEMA DEL USUARIO - ID: {contrato_id}")
+            print(f"✅ CONTRATO GUARDADO EN ESQUEMA {self.usuario} - ID: {contrato_id}")
             return contrato_id
             
         except psycopg2.IntegrityError:
@@ -1282,24 +1359,449 @@ class ContratosManagerUsuarios(ContratosManager):
         finally:
             conn.close()
     
-    # NOTA: Todos los demás métodos deben sobrescribirse de manera similar
-    # Para mantener el ejemplo simple, solo sobrescribimos estos dos métodos
-    # En producción, deberías sobrescribir todos los métodos que acceden a las tablas
+    def guardar_archivo_completo(self, contrato_id, archivo, categoria, tipo_archivo, usuario="sistema"):
+        """
+        GUARDAR ARCHIVO EN ESQUEMA DEL USUARIO - VERSIÓN CORREGIDA
+        """
+        conn = self._get_connection_with_schema()
+        try:
+            # Manejar diferentes tipos de entrada
+            if hasattr(archivo, 'read'):
+                file_bytes = archivo.read()
+                file_name = archivo.name
+            elif isinstance(archivo, bytes):
+                file_bytes = archivo
+                file_name = f"archivo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            elif isinstance(archivo, str):
+                with open(archivo, 'rb') as f:
+                    file_bytes = f.read()
+                file_name = archivo.split('/')[-1]
+            else:
+                raise ValueError("Tipo de archivo no soportado")
+            
+            file_hash = self.calcular_hash(file_bytes)
+            
+            # Crear Large Object
+            lo_oid = conn.lobject(0, 'wb', 0, None)
+            
+            # Escribir en chunks
+            chunk_size = 1024 * 1024
+            with io.BytesIO(file_bytes) as file_stream:
+                while True:
+                    chunk = file_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    lo_oid.write(chunk)
+            
+            # Insertar archivo
+            cur = conn.cursor()
+            query = sql.SQL("""
+                INSERT INTO archivos_pemex (
+                    contrato_id, categoria, tipo_archivo,
+                    lo_oid, nombre_archivo, tamaño_bytes, hash_sha256, usuario_subio
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """)
+            
+            cur.execute(query, (
+                contrato_id, categoria, tipo_archivo,
+                lo_oid.oid, file_name, len(file_bytes), file_hash, usuario
+            ))
+            
+            archivo_id = cur.fetchone()[0]
+            conn.commit()
+            
+            print(f"✅ Archivo guardado en esquema {self.usuario}: {file_name} (ID: {archivo_id})")
+            return archivo_id
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ ERROR guardando archivo en esquema usuario: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise Exception(f"Error guardando archivo: {str(e)}")
+        finally:
+            conn.close()
+    
+    def guardar_archivo_streamlit(self, contrato_id, archivo_streamlit, categoria, usuario="sistema"):
+        """
+        VERSIÓN ESPECÍFICA para archivos de Streamlit - EN ESQUEMA USUARIO
+        """
+        try:
+            # Leer el archivo de Streamlit
+            archivo_bytes = archivo_streamlit.read()
+            archivo_streamlit.seek(0)
+            
+            # Usar el método existente
+            return self.guardar_archivo_completo(
+                contrato_id=contrato_id,
+                archivo=archivo_bytes,
+                categoria=categoria,
+                tipo_archivo=getattr(archivo_streamlit, 'type', 'application/octet-stream'),
+                usuario=usuario
+            )
+            
+        except Exception as e:
+            raise Exception(f"Error guardando archivo Streamlit: {str(e)}")
+    
+    def obtener_archivos(self, contrato_id, categoria=None):
+        """
+        OBTENER ARCHIVOS DEL ESQUEMA DEL USUARIO - VERSIÓN CORREGIDA
+        """
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            if categoria:
+                cur.execute("""
+                    SELECT id, contrato_id, categoria, tipo_archivo,
+                           lo_oid, nombre_archivo, tamaño_bytes, hash_sha256,
+                           fecha_subida, usuario_subio
+                    FROM archivos_pemex
+                    WHERE contrato_id = %s AND categoria = %s
+                    ORDER BY fecha_subida DESC
+                """, (contrato_id, categoria))
+            else:
+                cur.execute("""
+                    SELECT id, contrato_id, categoria, tipo_archivo,
+                           lo_oid, nombre_archivo, tamaño_bytes, hash_sha256,
+                           fecha_subida, usuario_subio
+                    FROM archivos_pemex
+                    WHERE contrato_id = %s
+                    ORDER BY categoria, fecha_subida DESC
+                """, (contrato_id,))
+            
+            resultados = cur.fetchall()
+            
+            if not resultados:
+                return []
+            
+            columnas = [desc[0] for desc in cur.description]
+            archivos = []
+            
+            for fila in resultados:
+                metadata = dict(zip(columnas, fila))
+                
+                # Obtener contenido
+                lo_oid = metadata['lo_oid']
+                try:
+                    large_obj = conn.lobject(lo_oid, 'rb', 0, None)
+                    
+                    chunks = []
+                    chunk_size = 1024 * 1024
+                    while True:
+                        chunk = large_obj.read(chunk_size)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                    
+                    contenido = b''.join(chunks)
+                    
+                    archivo_completo = {
+                        'id': metadata['id'],
+                        'contrato_id': metadata['contrato_id'],
+                        'categoria': metadata['categoria'],
+                        'nombre_archivo': metadata['nombre_archivo'],
+                        'tipo_archivo': metadata['tipo_archivo'],
+                        'tamaño_bytes': metadata['tamaño_bytes'],
+                        'hash_sha256': metadata['hash_sha256'],
+                        'fecha_subida': metadata['fecha_subida'],
+                        'usuario_subio': metadata['usuario_subio'],
+                        'contenido': contenido
+                    }
+                    
+                    archivos.append(archivo_completo)
+                    
+                except Exception as e:
+                    print(f"⚠️ Error obteniendo contenido del archivo {metadata['id']}: {e}")
+                    continue
+            
+            return archivos
+            
+        except Exception as e:
+            print(f"⚠️ Error obteniendo archivos del esquema usuario: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def obtener_archivos_por_contrato(self, contrato_id):
+        """
+        Obtener todos los archivos de un contrato (ESQUEMA USUARIO)
+        """
+        try:
+            return self.obtener_archivos(contrato_id)
+        except Exception as e:
+            print(f"⚠️ Error en obtener_archivos_por_contrato: {e}")
+            return []
+    
+    def obtener_contrato_por_id(self, contrato_id):
+        """Obtener contrato completo por ID - EN ESQUEMA USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT id, numero_contrato, lo_oid, nombre_archivo, tipo_archivo,
+                       tamaño_bytes, hash_sha256
+                FROM contratos_pemex
+                WHERE id = %s
+            """, (contrato_id,))
+            
+            resultado = cur.fetchone()
+            if not resultado:
+                return None
+            
+            columnas = [desc[0] for desc in cur.description]
+            metadata = dict(zip(columnas, resultado))
+            
+            lo_oid = metadata['lo_oid']
+            large_obj = conn.lobject(lo_oid, 'rb', 0, None)
+            
+            chunks = []
+            chunk_size = 1024 * 1024
+            while True:
+                chunk = large_obj.read(chunk_size)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            
+            contenido = b''.join(chunks)
+            
+            return {
+                'metadata': metadata,
+                'contenido': contenido
+            }
+            
+        except Exception as e:
+            raise Exception(f"❌ Error obteniendo contrato: {str(e)}")
+        finally:
+            conn.close()
+    
+    def eliminar_archivo(self, archivo_id, categoria=None):
+        """ELIMINAR ARCHIVO DEL ESQUEMA DEL USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            if categoria:
+                cur.execute("SELECT lo_oid FROM archivos_pemex WHERE id = %s AND categoria = %s", 
+                          (archivo_id, categoria))
+            else:
+                cur.execute("SELECT lo_oid FROM archivos_pemex WHERE id = %s", (archivo_id,))
+            
+            resultado = cur.fetchone()
+            
+            if resultado:
+                lo_oid = resultado[0]
+                
+                if categoria:
+                    cur.execute("DELETE FROM archivos_pemex WHERE id = %s AND categoria = %s", 
+                              (archivo_id, categoria))
+                else:
+                    cur.execute("DELETE FROM archivos_pemex WHERE id = %s", (archivo_id,))
+                
+                try:
+                    large_obj = conn.lobject(lo_oid)
+                    large_obj.unlink()
+                except:
+                    pass
+            
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Error eliminando archivo del esquema usuario: {str(e)}")
+        finally:
+            conn.close()
+    
+    def eliminar_contrato(self, contrato_id):
+        """Eliminar contrato de PostgreSQL - EN ESQUEMA USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            # Obtener OID antes de eliminar
+            cur.execute("SELECT lo_oid FROM contratos_pemex WHERE id = %s", (contrato_id,))
+            resultado = cur.fetchone()
+            
+            if resultado:
+                lo_oid = resultado[0]
+                
+                # Eliminar archivos asociados primero
+                cur.execute("SELECT lo_oid FROM archivos_pemex WHERE contrato_id = %s", (contrato_id,))
+                archivos_oids = cur.fetchall()
+                
+                # Eliminar archivos
+                cur.execute("DELETE FROM archivos_pemex WHERE contrato_id = %s", (contrato_id,))
+                
+                # Eliminar Large Objects de archivos
+                for (archivo_oid,) in archivos_oids:
+                    try:
+                        large_obj = conn.lobject(archivo_oid)
+                        large_obj.unlink()
+                    except:
+                        pass
+                
+                # Eliminar contrato
+                cur.execute("DELETE FROM contratos_pemex WHERE id = %s", (contrato_id,))
+                
+                # Eliminar Large Object del contrato
+                try:
+                    large_obj = conn.lobject(lo_oid)
+                    large_obj.unlink()
+                except:
+                    pass
+            
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"❌ Error eliminando contrato: {str(e)}")
+        finally:
+            conn.close()
+    
+    def eliminar_archivos_contrato(self, contrato_id):
+        """
+        ELIMINAR TODOS LOS ARCHIVOS DE UN CONTRATO - EN ESQUEMA USUARIO
+        """
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("SELECT lo_oid FROM archivos_pemex WHERE contrato_id = %s", (contrato_id,))
+            oids = cur.fetchall()
+            
+            cur.execute("DELETE FROM archivos_pemex WHERE contrato_id = %s", (contrato_id,))
+            
+            for (lo_oid,) in oids:
+                try:
+                    large_obj = conn.lobject(lo_oid)
+                    large_obj.unlink()
+                except:
+                    pass
+            
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Error eliminando archivos del contrato: {str(e)}")
+        finally:
+            conn.close()
+    
+    def obtener_estadisticas_pemex(self):
+        """Obtener estadísticas de PostgreSQL - EN ESQUEMA USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_contratos,
+                    COALESCE(SUM(tamaño_bytes), 0) as total_bytes,
+                    COUNT(DISTINCT contratista) as contratistas_unicos,
+                    MIN(fecha_subida) as fecha_mas_antigua,
+                    MAX(fecha_subida) as fecha_mas_reciente
+                FROM contratos_pemex
+            """)
+            
+            stats = dict(zip(['total_contratos', 'total_bytes', 'contratistas_unicos', 
+                            'fecha_mas_antigua', 'fecha_mas_reciente'], 
+                           cur.fetchone()))
+            
+            # Formatear fechas
+            for key in ['fecha_mas_antigua', 'fecha_mas_reciente']:
+                if stats[key]:
+                    stats[key] = stats[key].strftime('%Y-%m-%d')
+            
+            return stats
+            
+        except Exception as e:
+            raise Exception(f"❌ Error obteniendo estadísticas: {str(e)}")
+        finally:
+            conn.close()
+
+    # ========== MÉTODOS ADICIONALES PARA COMPATIBILIDAD ==========
+    
+    def contar_archivos_por_contrato(self, contrato_id):
+        """Contar cuántos archivos tiene un contrato - EN ESQUEMA USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT COUNT(*) as total
+                FROM archivos_pemex
+                WHERE contrato_id = %s
+            """, (contrato_id,))
+            
+            resultado = cur.fetchone()
+            return resultado[0] if resultado else 0
+            
+        except Exception as e:
+            print(f"⚠️ Error contando archivos: {e}")
+            return 0
+        finally:
+            conn.close()
+    
+    def obtener_categorias_archivos(self, contrato_id):
+        """Obtener categorías de archivos - EN ESQUEMA USUARIO"""
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT DISTINCT categoria
+                FROM archivos_pemex
+                WHERE contrato_id = %s
+                ORDER BY categoria
+            """, (contrato_id,))
+            
+            categorias = [row[0] for row in cur.fetchall()]
+            return categorias
+            
+        except Exception as e:
+            print(f"⚠️ Error obteniendo categorías: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def validar_archivo(self, contrato_id, categoria, nombre_archivo):
+        """
+        Validar si un archivo ya existe - EN ESQUEMA USUARIO
+        """
+        conn = self._get_connection_with_schema()
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT COUNT(*) 
+                FROM archivos_pemex 
+                WHERE contrato_id = %s 
+                AND categoria = %s 
+                AND nombre_archivo = %s
+            """, (contrato_id, categoria, nombre_archivo))
+            
+            existe = cur.fetchone()[0] > 0
+            return existe
+            
+        except Exception as e:
+            print(f"⚠️ Error validando archivo: {e}")
+            return False
+        finally:
+            conn.close()
 
 # ============================================
-# FUNCIONES ADICIONALES PARA GESTIÓN DE USUARIOS
+# FUNCIÓN CORREGIDA PARA OBTENER MANAGER POR USUARIO
 # ============================================
-
-@st.cache_resource
-def get_esquema_manager():
-    """Obtener manager de esquemas"""
-    connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
-    return SistemaEsquemasUsuarios(connection_string)
 
 @st.cache_resource
 def get_db_manager_por_usuario(usuario=""):
     """
     Obtener manager específico para un usuario (con su propio esquema)
+    VERSIÓN CORREGIDA
     """
     connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
     
@@ -1308,14 +1810,19 @@ def get_db_manager_por_usuario(usuario=""):
             st.warning("⚠️ Usuario no especificado, usando esquema público")
             usuario = "SISTEMA"
         
-        # Primero, asegurarse de que el esquema del usuario existe
-        esquema_manager = get_esquema_manager()
-        esquema_manager.verificar_esquema_usuario(usuario)
-        
         # Crear manager con esquema del usuario
         manager = ContratosManagerUsuarios(connection_string, usuario)
-        st.success(f"✅ Usuario {usuario} conectado a su propio esquema PostgreSQL")
-        return manager
+        
+        # Verificar que funciona
+        try:
+            # Probar conexión
+            contratos = manager.buscar_contratos_pemex({})
+            st.success(f"✅ Usuario {usuario} conectado a su esquema PostgreSQL")
+            return manager
+        except Exception as test_error:
+            st.error(f"❌ Error inicializando esquema usuario: {test_error}")
+            # Fallback al manager original (público)
+            return get_db_manager()
         
     except Exception as e:
         st.error(f"❌ Error conectando a PostgreSQL para usuario {usuario}: {str(e)}")
@@ -1362,4 +1869,3 @@ def migrar_datos_usuario(usuario_original, usuario_destino):
         st.error(f"❌ Error migrando datos: {str(e)}")
     finally:
         conn.close()
-    
