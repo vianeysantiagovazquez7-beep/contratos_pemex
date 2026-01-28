@@ -45,13 +45,9 @@ def obtener_contratos_postgresql(manager):
 def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_archivo):
     """✅ VERSIÓN CORREGIDA Y FUNCIONAL: Guardar archivo individual en PostgreSQL"""
     try:
-        # LEER el contenido del archivo primero
         archivo_bytes = archivo.read()
-        
-        # Volver al inicio del archivo
         archivo.seek(0)
         
-        # ✅ PRIMERO intentar guardar_archivo_streamlit (método específico para Streamlit)
         if hasattr(manager, 'guardar_archivo_streamlit'):
             try:
                 archivo_id = manager.guardar_archivo_streamlit(
@@ -65,7 +61,6 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
             except Exception as e:
                 st.warning(f"⚠️ Error con guardar_archivo_streamlit: {e}, intentando otro método...")
         
-        # ✅ SEGUNDO intentar guardar_archivo_completo
         if hasattr(manager, 'guardar_archivo_completo'):
             try:
                 archivo_id = manager.guardar_archivo_completo(
@@ -76,11 +71,9 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
             except Exception as e:
                 st.warning(f"⚠️ Error con guardar_archivo_completo: {e}")
         
-        # ❌ Si no se pudo guardar con ninguno de los métodos anteriores
         return False, "❌ No se encontró un método válido para guardar archivos"
             
     except Exception as e:
-        # DEBUG: Mostrar error detallado
         st.error(f"🔴 ERROR DETALLADO en guardar_archivo_postgresql: {str(e)}")
         import traceback
         st.error(f"Traceback: {traceback.format_exc()}")
@@ -89,7 +82,6 @@ def guardar_archivo_postgresql(manager, contrato_id, archivo, categoria, tipo_ar
 def obtener_archivos_por_contrato(manager, contrato_id):
     """✅ FUNCIÓN SIMPLIFICADA Y CORREGIDA: Obtener todos los archivos de un contrato"""
     try:
-        # Método directo si existe
         if hasattr(manager, 'obtener_archivos_por_contrato'):
             try:
                 archivos = manager.obtener_archivos_por_contrato(contrato_id)
@@ -98,7 +90,6 @@ def obtener_archivos_por_contrato(manager, contrato_id):
             except Exception as e:
                 st.warning(f"⚠️ Error con obtener_archivos_por_contrato: {e}")
         
-        # Método alternativo
         if hasattr(manager, 'obtener_archivos'):
             try:
                 archivos = manager.obtener_archivos(contrato_id)
@@ -106,7 +97,6 @@ def obtener_archivos_por_contrato(manager, contrato_id):
             except Exception as e:
                 st.warning(f"⚠️ Error con obtener_archivos: {e}")
         
-        # Si no hay métodos disponibles
         st.error("⚠️ El manager no tiene métodos para obtener archivos")
         return []
         
@@ -136,7 +126,6 @@ def eliminar_archivo_postgresql(manager, archivo_id, categoria):
 def eliminar_contrato_postgresql(manager, contrato_id):
     """✅ FUNCIÓN SIMPLIFICADA: Eliminar contrato completo de PostgreSQL"""
     try:
-        # Método directo
         if hasattr(manager, 'eliminar_contrato'):
             try:
                 success = manager.eliminar_contrato(contrato_id)
@@ -152,30 +141,23 @@ def eliminar_contrato_postgresql(manager, contrato_id):
     except Exception as e:
         return False, f"❌ Error eliminando contrato: {str(e)}"
 
-# ============================================
-# FUNCIONES DE DIAGNÓSTICO MEJORADAS
-# ============================================
 
 def diagnosticar_esquema_postgresql(manager):
     """Diagnosticar el estado del esquema PostgreSQL"""
     st.sidebar.markdown("### 🔍 DIAGNÓSTICO ESQUEMA")
     
-    # Información básica
     st.sidebar.write(f"**Tipo de Manager:** {type(manager).__name__}")
     
     if hasattr(manager, 'usuario'):
         st.sidebar.write(f"**Usuario:** {manager.usuario}")
         
-        # Verificar métodos disponibles
         metodos_archivos = [m for m in dir(manager) if 'archivo' in m.lower() and not m.startswith('_')]
         st.sidebar.write(f"**Métodos de archivos:** {len(metodos_archivos)}")
         
-        # Contar contratos
         try:
             contratos = manager.buscar_contratos_pemex({})
             st.sidebar.write(f"**Contratos en esquema:** {len(contratos)}")
             
-            # Contar archivos totales
             total_archivos = 0
             for contrato in contratos[:3]:  # Solo primeros 3 para no sobrecargar
                 archivos = obtener_archivos_por_contrato(manager, contrato['id'])
@@ -186,12 +168,10 @@ def diagnosticar_esquema_postgresql(manager):
         except Exception as e:
             st.sidebar.error(f"Error diagnóstico: {e}")
     
-    # Botón para diagnóstico detallado
     if st.sidebar.button("🔍 Diagnóstico Detallado"):
         with st.spinner("Ejecutando diagnóstico..."):
             try:
-                # Verificar conexión directa a PostgreSQL
-                conn = psycopg2.connect("postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos")
+                conn = psycopg2.connect("postgresql://pemex_contratos1_user:FXLYHGmNK9m69V9fRYwYMAcDWNG7TqcK@dpg-d5rg99s9c44c73e8lno0-a/pemex_contratos1")
                 cur = conn.cursor()
                 
                 # Listar esquemas

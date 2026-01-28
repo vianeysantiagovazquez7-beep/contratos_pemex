@@ -880,7 +880,7 @@ class ContratosManager:
 # Función para obtener el manager - MANTENIDA SIN CAMBIOS
 @st.cache_resource
 def get_db_manager():
-    connection_string = "postgresql://pemex_contratos_user:j2OyFqPrwkAQelnX9TVSXFrlWsekAkdH@dpg-d4gaap3uibrs73998am0-a:5432/pemex_contratos"
+    connection_string = "postgresql://pemex_contratos1_user:FXLYHGmNK9m69V9fRYwYMAcDWNG7TqcK@dpg-d5rg99s9c44c73e8lno0-a/pemex_contratos1"
     
     try:
         manager = ContratosManager(connection_string)
