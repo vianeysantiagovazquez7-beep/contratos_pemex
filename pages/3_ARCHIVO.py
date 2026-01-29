@@ -8,6 +8,8 @@ from core.database import get_db_manager_por_usuario
 import sys
 import psycopg2
 
+from core.tutorial import init, header_button, overlay, mark_step_done, finish_tutorial_if_ready
+
 # --- CONFIGURACIÓN DE RUTAS ---
 assets_dir = Path(__file__).parent.parent / "assets"
 fondo_path = assets_dir / "fondo.jpg"
@@ -30,6 +32,9 @@ nombre = st.session_state.get("nombre", "").upper()
 if not usuario or not nombre:
     st.error("⚠️ Debes iniciar sesión primero desde INICIO.py")
     st.stop()
+init()
+header_button()
+overlay("archivo")
 
 # ==============================
 #  FUNCIONES CORREGIDAS Y ROBUSTAS PARA POSTGRESQL
@@ -600,6 +605,9 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
                 # Resumen
                 if archivos_exitosos > 0:
                     st.success(f"🎉 {archivos_exitosos} archivo(s) subido(s) exitosamente")
+                    if archivos_exitosos > 0:
+                        mark_step_done("archivo")
+                        finish_tutorial_if_ready()
                 if archivos_fallidos > 0:
                     st.error(f"⚠️ {archivos_fallidos} archivo(s) no se pudieron subir")
                     

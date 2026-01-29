@@ -1,0 +1,148 @@
+import streamlit as st
+from core.tutorial_state import mark_completed, is_first_time
+
+PAGES = {
+    "principal": "pages/1_PRINCIPAL.py",
+    "consulta": "pages/2_CONSULTA.py",
+    "archivo": "pages/3_ARCHIVO.py",
+}
+
+def init():
+    if "tutorial" not in st.session_state:
+        st.session_state.tutorial = {
+            "active": False,
+            "step": 0,
+            "done": {},
+            "force_first_time": True,
+            "survey_open": False,
+        }
+
+def start():
+    st.session_state.tutorial["active"] = True
+    st.session_state.tutorial["step"] = 1
+    st.session_state.tutorial["survey_open"] = False
+    st.rerun()
+
+def stop():
+    st.session_state.tutorial["active"] = False
+    st.session_state.tutorial["step"] = 0
+    st.rerun()
+
+def header_button():
+    # Botón superior derecha
+    col1, col2, col3 = st.columns([6, 1.5, 1.5])
+    with col3:
+        if st.button("🧭 Ver tutorial", use_container_width=True):
+            start()
+
+def mark_step_done(key: str):
+    st.session_state.tutorial["done"][key] = True
+
+def finish_tutorial_if_ready():
+    # condición final: ya guardó archivo en ARCHIVO
+    if st.session_state.tutorial["done"].get("archivo_guardado_ok"):
+        st.session_state.tutorial["active"] = False
+        st.session_state.tutorial["step"] = 0
+        st.session_state.tutorial["survey_open"] = True
+        st.rerun()
+
+def _go_to(page_key: str):
+    if page_key in PAGES:
+        st.switch_page(PAGES[page_key])
+
+def overlay(page_key: str):
+    if "tutorial" not in st.session_state:
+        return
+
+    t = st.session_state.tutorial
+    if not t["active"]:
+        # Si terminó, muestra encuesta si aplica
+        if t.get("survey_open"):
+            survey()
+        return
+
+    step = t["step"]
+
+    # Control de navegación automática por pasos
+    # 1 = principal, 2 = consulta, 3 = archivo
+    if step == 1 and page_key != "principal":
+        _go_to("principal")
+        return
+    if step == 2 and page_key != "consulta":
+        _go_to("consulta")
+        return
+    if step == 3 and page_key != "archivo":
+        _go_to("archivo")
+        return
+
+    # Overlay UI
+    with st.container():
+        st.markdown(
+            """
+            <div style="
+                position: fixed;
+                top: 90px;
+                right: 30px;
+                width: 360px;
+                background: rgba(255,255,255,0.96);
+                border: 2px solid #d4af37;
+                border-radius: 14px;
+                padding: 14px 16px;
+                z-index: 9999;
+                box-shadow: 0 12px 35px rgba(0,0,0,0.20);
+            ">
+            """,
+            unsafe_allow_html=True
+        )
+
+    # Contenido por paso
+    if step == 1 and page_key == "principal":
+        st.info("📌 Tutorial (1/3): Aquí subes y registras contratos.")
+        st.write("➡️ Cuando termines de capturar un contrato, pasa al siguiente paso.")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Siguiente ➜ Consulta"):
+                t["step"] = 2
+                st.rerun()
+        with c2:
+            if st.button("Salir"):
+                stop()
+
+    elif step == 2 and page_key == "consulta":
+        st.info("📌 Tutorial (2/3): Aquí buscas contratos y descargas archivos.")
+        st.write("🔍 Usa el buscador para ubicar contratos por número, contratista o palabra clave.")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Siguiente ➜ Archivo"):
+                t["step"] = 3
+                st.rerun()
+        with c2:
+            if st.button("Salir"):
+                stop()
+
+    elif step == 3 and page_key == "archivo":
+        st.info("📌 Tutorial (3/3): Aquí guardas anexos, cédulas y soportes.")
+        st.write("📤 Selecciona un contrato, elige sección y sube archivo(s).")
+        st.warning("El tutorial termina automáticamente cuando subas al menos 1 archivo exitosamente.")
+        if st.button("Salir"):
+            stop()
+
+def survey():
+    st.markdown("---")
+    st.subheader("📝 Encuesta de satisfacción (7 preguntas)")
+    st.caption("Esto ayuda a validar el sistema con usuarios reales (tu 50% de muestra).")
+
+    with st.form("tutorial_survey_form"):
+        p1 = st.slider("1) ¿Qué tan fácil fue usar el sistema?", 1, 5, 4)
+        p2 = st.slider("2) ¿Qué tan claro fue el tutorial?", 1, 5, 4)
+        p3 = st.slider("3) ¿La navegación entre páginas fue intuitiva?", 1, 5, 4)
+        p4 = st.slider("4) ¿Qué tan fácil fue encontrar contratos en Consulta?", 1, 5, 4)
+        p5 = st.slider("5) ¿Qué tan fácil fue subir archivos en Archivo?", 1, 5, 4)
+        p6 = st.slider("6) ¿El sistema respondió rápido?", 1, 5, 4)
+        p7 = st.text_area("7) Comentarios / mejoras (opcional):", placeholder="Ej. mejorar botones, texto, orden...")
+
+        if st.form_submit_button("📨 Enviar encuesta"):
+            st.session_state.tutorial["survey_open"] = False
+            st.success("✅ Encuesta enviada. Gracias.")
+            # Aquí luego lo guardamos en PostgreSQL si quieres
+            st.rerun()

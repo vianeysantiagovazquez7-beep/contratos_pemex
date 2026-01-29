@@ -18,7 +18,7 @@ from core.config import OUTPUT_DIR
 from pathlib import Path
 OUTPUT_DIR = Path("output")
 from core.excel_utils import save_excel, load_excel
-
+from core.tutorial import init, header_button, overlay, is_active, step, finish_and_open_survey
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
 
@@ -41,7 +41,9 @@ logo_base64 = get_base64_image(LOGO)
 
 # === Página en modo wide ===
 st.set_page_config(layout="wide")
-
+init()
+header_button()
+overlay("principal")
 # === SESSION STATE ===
 for key, default in {
     "autenticado": False,
@@ -505,9 +507,10 @@ with st.form("form_contratos", clear_on_submit=False):
                     exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
                     
                     if exito_postgresql:
-                        st.balloons()
                         st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN POSTGRESQL!**")
                         st.info("🗄️ **PostgreSQL:** Disponible en la base de datos centralizada")
+                    if is_active() and step() == 5:
+                        finish_and_open_survey()
                     else:
                         st.warning("⚠️ No se pudo guardar el contrato en la base de datos")
                 else:

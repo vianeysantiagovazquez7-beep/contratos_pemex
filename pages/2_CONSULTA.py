@@ -5,6 +5,7 @@ import re
 import base64
 import json 
 from core.database import get_db_manager_por_usuario # Importar el nuevo manager
+from core.tutorial import init, header_button, overlay
 
 # --- Configuración de rutas ---
 BASE_DIR = Path("data")
@@ -28,6 +29,10 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
     st.stop()
 
 usuario = st.session_state.get("nombre", "").upper()
+
+init()
+header_button()
+overlay("consulta")
 
 # --- Mensaje informativo al final ---
 st.markdown(
