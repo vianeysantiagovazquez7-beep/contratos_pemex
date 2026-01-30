@@ -77,24 +77,56 @@ def overlay(page_key: str):
         return
 
     # Overlay UI
-    with st.container():
-        st.markdown(
-            """
-            <div style="
-                position: fixed;
-                top: 90px;
-                right: 30px;
-                width: 360px;
-                background: rgba(255,255,255,0.96);
-                border: 2px solid #d4af37;
-                border-radius: 14px;
-                padding: 14px 16px;
-                z-index: 9999;
-                box-shadow: 0 12px 35px rgba(0,0,0,0.20);
-            ">
-            """,
-            unsafe_allow_html=True
-        )
+    st.markdown(f"""
+<style>
+
+[data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, #6b0012 0%, #40000a 100%);
+    color: white;
+}}
+[data-testid="stSidebar"] * {{ color:white !important; }}
+
+div[data-testid="stForm"] {{
+    background: rgba(255,255,255,0.90);
+    border: 3px solid #d4af37;
+    border-radius: 20px;
+    box-shadow: 0 18px 45px rgba(0,0,0,0.22);
+    padding: 26px 36px;
+    width: 100%;
+    max-width: 1066px;
+    margin: 40px auto;
+}}
+
+/* Estilos para elementos internos del formulario */
+div[data-testid="stForm"] label {{
+    color: #2c2c2c !important;
+    font-weight: 500;
+}}
+
+div[data-testid="stForm"] .stTextInput input,
+div[data-testid="stForm"] .stNumberInput input,
+div[data-testid="stForm"] .stTextArea textarea {{
+    background: rgba(255,255,255,0.85);
+    border: 2px solid #d4af37;
+    border-radius: 8px;
+    color: #2c2c2c;
+}}
+
+div[data-testid="stForm"] .stSelectbox div {{
+    color: #2c2c2c !important;
+}}
+
+div.stButton > button:first-child {{
+    background-color: #d4af37;
+    color: black;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    height: 44px;
+}}
+
+</style>
+""", unsafe_allow_html=True)
 
     # Contenido por paso
     if step == 1 and page_key == "principal":
