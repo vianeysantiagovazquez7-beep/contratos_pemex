@@ -1,6 +1,7 @@
 import streamlit as st
 from core.tutorial_state import mark_completed, is_first_time
 
+
 # CORRECCIÓN: Rutas exactas de los archivos (deben coincidir con los nombres reales)
 PAGES = {
     "principal": "pages/1_PAGINA PRINCIPAL.py",  # Nombre EXACTO del archivo
@@ -28,6 +29,11 @@ def stop():
     st.session_state.tutorial["active"] = False
     st.session_state.tutorial["step"] = 0
     st.rerun()
+
+st.markdown(
+    """
+    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
+        <strong>
 
 def header_button():
     # Botón superior derecha
@@ -76,57 +82,7 @@ def overlay(page_key: str):
         _go_to("archivo")
         return
 
-    # Overlay UI
-    st.markdown(f"""
-<style>
 
-[data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, #6b0012 0%, #40000a 100%);
-    color: white;
-}}
-[data-testid="stSidebar"] * {{ color:white !important; }}
-
-div[data-testid="stForm"] {{
-    background: rgba(255,255,255,0.90);
-    border: 3px solid #d4af37;
-    border-radius: 20px;
-    box-shadow: 0 18px 45px rgba(0,0,0,0.22);
-    padding: 26px 36px;
-    width: 100%;
-    max-width: 1066px;
-    margin: 40px auto;
-}}
-
-/* Estilos para elementos internos del formulario */
-div[data-testid="stForm"] label {{
-    color: #2c2c2c !important;
-    font-weight: 500;
-}}
-
-div[data-testid="stForm"] .stTextInput input,
-div[data-testid="stForm"] .stNumberInput input,
-div[data-testid="stForm"] .stTextArea textarea {{
-    background: rgba(255,255,255,0.85);
-    border: 2px solid #d4af37;
-    border-radius: 8px;
-    color: #2c2c2c;
-}}
-
-div[data-testid="stForm"] .stSelectbox div {{
-    color: #2c2c2c !important;
-}}
-
-div.stButton > button:first-child {{
-    background-color: #d4af37;
-    color: black;
-    font-weight: 600;
-    border-radius: 8px;
-    border: none;
-    height: 44px;
-}}
-
-</style>
-""", unsafe_allow_html=True)
 
     # Contenido por paso
     if step == 1 and page_key == "principal":
@@ -159,7 +115,11 @@ div.stButton > button:first-child {{
         st.warning("El tutorial termina automáticamente cuando subas al menos 1 archivo exitosamente.")
         if st.button("Salir"):
             stop()
-
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+            
 # CORRECCIÓN: Encuesta con emojis de caritas del 1 al 5
 def survey():
     st.markdown("---")
