@@ -30,10 +30,6 @@ def stop():
     st.session_state.tutorial["step"] = 0
     st.rerun()
 
-st.markdown(
-    """
-    <div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.8); border-radius: 10px;'>
-        <strong>
 
 def header_button():
     # Botón superior derecha
@@ -115,10 +111,7 @@ def overlay(page_key: str):
         st.warning("El tutorial termina automáticamente cuando subas al menos 1 archivo exitosamente.")
         if st.button("Salir"):
             stop()
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+
             
 # CORRECCIÓN: Encuesta con emojis de caritas del 1 al 5
 def survey():
