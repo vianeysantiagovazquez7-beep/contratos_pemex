@@ -8,7 +8,8 @@ from core.database import get_db_manager_por_usuario
 import sys
 import psycopg2
 
-from core.tutorial import init, header_button, overlay, mark_step_done, finish_tutorial_if_ready
+# CORRECCIÓN: Solo importar las funciones que existen en core.tutorial
+from core.tutorial import init, header_button, overlay
 
 # --- CONFIGURACIÓN DE RUTAS ---
 assets_dir = Path(__file__).parent.parent / "assets"
@@ -151,24 +152,24 @@ def diagnosticar_esquema_postgresql(manager):
     """Diagnosticar el estado del esquema PostgreSQL"""
     st.sidebar.markdown("### 🔍 DIAGNÓSTICO ESQUEMA")
     
-    st.sidebar.write(f"**Tipo de Manager:** {type(manager).__name__}")
+    st.sidebar.write(f"*Tipo de Manager:* {type(manager)._name_}")
     
     if hasattr(manager, 'usuario'):
-        st.sidebar.write(f"**Usuario:** {manager.usuario}")
+        st.sidebar.write(f"*Usuario:* {manager.usuario}")
         
         metodos_archivos = [m for m in dir(manager) if 'archivo' in m.lower() and not m.startswith('_')]
-        st.sidebar.write(f"**Métodos de archivos:** {len(metodos_archivos)}")
+        st.sidebar.write(f"*Métodos de archivos:* {len(metodos_archivos)}")
         
         try:
             contratos = manager.buscar_contratos_pemex({})
-            st.sidebar.write(f"**Contratos en esquema:** {len(contratos)}")
+            st.sidebar.write(f"*Contratos en esquema:* {len(contratos)}")
             
             total_archivos = 0
             for contrato in contratos[:3]:  # Solo primeros 3 para no sobrecargar
                 archivos = obtener_archivos_por_contrato(manager, contrato['id'])
                 total_archivos += len(archivos)
             
-            st.sidebar.write(f"**Archivos totales (primeros 3 contratos):** {total_archivos}")
+            st.sidebar.write(f"*Archivos totales (primeros 3 contratos):* {total_archivos}")
             
         except Exception as e:
             st.sidebar.error(f"Error diagnóstico: {e}")
@@ -176,6 +177,7 @@ def diagnosticar_esquema_postgresql(manager):
     if st.sidebar.button("🔍 Diagnóstico Detallado"):
         with st.spinner("Ejecutando diagnóstico..."):
             try:
+                # NOTA: Esta conexión es para diagnóstico, asegúrate de que la URL sea correcta
                 conn = psycopg2.connect("postgresql://pemex_contratos1_user:FXLYHGmNK9m69V9fRYwYMAcDWNG7TqcK@dpg-d5rg99s9c44c73e8lno0-a/pemex_contratos1")
                 cur = conn.cursor()
                 
@@ -199,9 +201,9 @@ def diagnosticar_esquema_postgresql(manager):
                             WHERE table_schema = '{esquema}'
                         """)
                         tablas = cur.fetchone()[0]
-                        st.sidebar.write(f"**{esquema}**: {tablas} tablas")
+                        st.sidebar.write(f"*{esquema}*: {tablas} tablas")
                     except:
-                        st.sidebar.write(f"**{esquema}**: Error")
+                        st.sidebar.write(f"*{esquema}*: Error")
                 
                 conn.close()
                 st.sidebar.success("✅ Diagnóstico completado")
@@ -233,7 +235,7 @@ def configurar_para_render():
         ]
 
 # Ejecutar configuración si es necesario
-if __name__ == '__main__':
+if __name__ == '_main_':
     configurar_para_render()
 
 # --- Mensaje informativo al final ---
@@ -560,7 +562,7 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
         if contrato_seleccionado_id:
             contrato_info = next((c for c in contratos_db if c['id'] == contrato_seleccionado_id), None)
             if contrato_info:
-                st.info(f"📋 **Contrato seleccionado:** {contrato_info['numero_contrato']} - {contrato_info['contratista']}")
+                st.info(f"📋 *Contrato seleccionado:* {contrato_info['numero_contrato']} - {contrato_info['contratista']}")
     else:
         st.warning("📭 No hay contratos disponibles en PostgreSQL")
         contrato_seleccionado_id = None
@@ -605,254 +607,11 @@ with st.form("form_gestion_archivos", clear_on_submit=True):
                 # Resumen
                 if archivos_exitosos > 0:
                     st.success(f"🎉 {archivos_exitosos} archivo(s) subido(s) exitosamente")
-                    if archivos_exitosos > 0:
-                        mark_step_done("archivo")
-                        finish_tutorial_if_ready()
+                    # COMENTADO: Estas funciones no existen en el core.tutorial actual
+                    # mark_step_done("archivo")
+                    # fini
                 if archivos_fallidos > 0:
                     st.error(f"⚠️ {archivos_fallidos} archivo(s) no se pudieron subir")
-                    
-            st.rerun()
-        else:
-            st.error("❌ No se seleccionó un contrato válido")
-
-    # ==================================================
-    #  CONTROL DE EXPANSIÓN DE CARPETAS
-    # ==================================================
-    st.markdown("---")
-    st.markdown("### 📂 Control de Visualización")
-    
-    # Selección de contrato PostgreSQL para expandir
-    if contratos_lista:
-        contrato_a_expandir = st.selectbox(
-            "🔍 Seleccionar contrato para ver detalles:",
-            ["NINGUNO"] + [f"CONTRATO_{c[0]}" for c in contratos_lista],
-            format_func=lambda x: "NINGUNO" if x == "NINGUNO" else next((c[1] for c in contratos_lista if f"CONTRATO_{c[0]}" == x), x),
-            key="select_contrato_expandir_postgresql",
-            help="Elige un contrato para ver y gestionar sus archivos"
-        )
-    else:
-        contrato_a_expandir = "NINGUNO"
-    
-    expandir_contrato = st.form_submit_button("📂 EXPANDIR CONTRATO SELECCIONADO", use_container_width=True)
-    
-    if expandir_contrato and contrato_a_expandir != "NINGUNO":
-        st.session_state.contrato_expandido = contrato_a_expandir
-        st.session_state.archivo_eliminando = None
-        st.session_state.contrato_eliminando = None
-        st.rerun()
-
-    # ==================================================
-    #  VISUALIZACIÓN DEL CONTRATO EXPANDIDO
-    # ==================================================
-    if st.session_state.contrato_expandido and st.session_state.contrato_expandido != "NINGUNO":
-        st.markdown("---")
-        
-        # MODO POSTGRESQL
-        contrato_id = int(st.session_state.contrato_expandido.replace("CONTRATO_", ""))
-        
-        st.markdown(f"<div class='carpeta-abierta'>", unsafe_allow_html=True)
-        
-        # Obtener información del contrato
-        success, contratos_db = obtener_contratos_postgresql(manager)
-        contrato_info = None
-        contrato_numero = ""
-        
-        if success:
-            for c in contratos_db:
-                if c['id'] == contrato_id:
-                    contrato_info = c
-                    contrato_numero = c.get('numero_contrato', '')
-                    break
-        
-        st.markdown(f"#### 🗄️ CONTRATO: {contrato_numero}")
-        
-        if contrato_info:
-            st.markdown("**📋 Información del contrato:**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"- **Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
-                st.write(f"- **Contratista:** {contrato_info.get('contratista', 'No especificado')}")
-                st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
-            with col2:
-                st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
-                st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
-        
-        # Botón para contraer
-        contraer = st.form_submit_button("📂 CERRAR CONTRATO", use_container_width=True)
-        if contraer:
-            st.session_state.contrato_expandido = None
-            st.session_state.archivo_eliminando = None
-            st.session_state.contrato_eliminando = None
-            st.rerun()
-        
-        # ✅ Obtener archivos del contrato usando la función simplificada
-        with st.spinner("Buscando archivos..."):
-            archivos = obtener_archivos_por_contrato(manager, contrato_id)
-        
-        if archivos:
-            # Agrupar archivos por categoría
-            archivos_por_categoria = {}
-            for archivo in archivos:
-                categoria = archivo.get('categoria', 'SIN CATEGORIA')
-                if categoria not in archivos_por_categoria:
-                    archivos_por_categoria[categoria] = []
-                archivos_por_categoria[categoria].append(archivo)
-            
-            # Mostrar archivos por categoría (MEJORADO)
-            secciones = [
-                ("📄 CONTRATO", "CONTRATO"),
-                ("📋 CÉDULA", "CEDULAS"),
-                ("📎 ANEXOS", "ANEXOS"), 
-                ("📂 SOPORTES", "SOPORTES FISICOS")
-            ]
-            
-            archivos_totales = 0
-            
-            for icono, categoria in secciones:
-                if categoria in archivos_por_categoria:
-                    archivos_categoria = archivos_por_categoria[categoria]
-                    archivos_totales += len(archivos_categoria)
-                    
-                    st.markdown(f"##### {icono} ({len(archivos_categoria)} archivos)")
-                    
-                    for archivo in archivos_categoria:
-                        size_bytes = archivo.get('tamaño_bytes', 0)
-                        size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
-                        archivo_key = f"{contrato_id}_{categoria}_{archivo.get('id', '0')}"
-                        
-                        st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
-                        
-                        col1, col2, col3 = st.columns([3, 1, 1])
-                        with col1:
-                            nombre_archivo = archivo.get('nombre_archivo', 'Sin nombre')
-                            st.markdown(f"**{nombre_archivo}**")
-                            if size_mb > 0:
-                                st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
-                            else:
-                                st.markdown(f"*Tamaño: Desconocido*")
-                        
-                        with col2:
-                            # ✅ BOTÓN DE DESCARGA FUNCIONAL
-                            contenido = archivo.get('contenido', b'')
-                            if contenido:
-                                # ID único para este archivo
-                                unique_id = f"download_{contrato_id}_{categoria}_{archivo.get('id', '0')}"
-                                
-                                # Convertir a base64
-                                b64 = base64.b64encode(contenido).decode()
-                                
-                                # Enlace oculto para descarga
-                                st.markdown(f'''
-                                <div style="display:none;">
-                                    <a id="{unique_id}_anchor" href="data:application/octet-stream;base64,{b64}" 
-                                       download="{nombre_archivo}">
-                                    </a>
-                                </div>
-                                ''', unsafe_allow_html=True)
-                                
-                                # Botón que activa la descarga vía JavaScript
-                                if st.form_submit_button("📥 Descargar", 
-                                                        use_container_width=True,
-                                                        key=f"submit_{unique_id}"):
-                                    # JavaScript para hacer clic en el enlace oculto
-                                    st.markdown(f'''
-                                    <script>
-                                    document.getElementById("{unique_id}_anchor").click();
-                                    </script>
-                                    ''', unsafe_allow_html=True)
-                            else:
-                                st.warning("Sin contenido")
-                        
-                        with col3:
-                            # ✅ BOTÓN DE ELIMINACIÓN FUNCIONAL
-                            if st.session_state.archivo_eliminando == archivo_key:
-                                st.warning(f"¿Eliminar {nombre_archivo}?")
-                                col_confirm, col_cancel = st.columns(2)
-                                with col_confirm:
-                                    if st.form_submit_button("✅ Sí", use_container_width=True, key=f"confirm_del_{archivo_key}"):
-                                        success, message = eliminar_archivo_postgresql(manager, archivo.get('id'), categoria)
-                                        if success:
-                                            st.success(message)
-                                            st.session_state.archivo_eliminando = None
-                                            st.rerun()
-                                        else:
-                                            st.error(message)
-                                with col_cancel:
-                                    if st.form_submit_button("❌ No", use_container_width=True, key=f"cancel_del_{archivo_key}"):
-                                        st.session_state.archivo_eliminando = None
-                                        st.rerun()
-                            else:
-                                if st.form_submit_button("🗑️ Eliminar", use_container_width=True, key=f"init_del_{archivo_key}"):
-                                    st.session_state.archivo_eliminando = archivo_key
-                                    st.rerun()
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-            
-            st.info(f"📊 **Total de archivos en el contrato:** {archivos_totales}")
-        else:
-            st.info("ℹ️ No hay archivos en este contrato")
-        
-        # ✅ ELIMINACIÓN DE CONTRATO COMPLETO
-        st.markdown("---")
-        st.markdown("### 🗑️ Eliminar Contrato Completo")
-        
-        if st.session_state.contrato_eliminando == contrato_id:
-            st.markdown("<div class='confirmacion-eliminar'>", unsafe_allow_html=True)
-            st.error("⚠️ **ADVERTENCIA CRÍTICA**")
-            st.warning(f"Estás a punto de eliminar el contrato **{contrato_numero}** COMPLETAMENTE")
-            st.info("❌ **Esta acción NO se puede deshacer**")
-            st.info("🗄️ **Se eliminarán TODOS los archivos de la base de datos**")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.form_submit_button("✅ SÍ, ELIMINAR CONTRATO COMPLETO", use_container_width=True, key="confirm_delete_contrato"):
-                    success, message = eliminar_contrato_postgresql(manager, contrato_id)
-                    if success:
-                        st.success(message)
-                        st.session_state.contrato_eliminando = None
-                        st.session_state.contrato_expandido = None
-                        st.rerun()
-                    else:
-                        st.error(message)
-            
-            with col2:
-                if st.form_submit_button("❌ CANCELAR ELIMINACIÓN", use_container_width=True, key="cancel_delete_contrato"):
-                    st.session_state.contrato_eliminando = None
-                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-        else:
-            if st.form_submit_button("🚨 ELIMINAR CONTRATO COMPLETO", use_container_width=True, key="init_delete_contrato"):
-                st.session_state.contrato_eliminando = contrato_id
-                st.rerun()
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ==================================================
-    #  LISTA DE CONTRATOS DISPONIBLES
-    # ==================================================
-    st.markdown("---")
-    st.markdown("### 📂 Contratos Disponibles")
-    
-    # Mostrar contratos de PostgreSQL
-    success, contratos_db = obtener_contratos_postgresql(manager)
-    if success and contratos_db:
-        for contrato in contratos_db:
-            contrato_key = f"CONTRATO_{contrato['id']}"
-            if st.session_state.contrato_expandido != contrato_key:
-                # Contar archivos del contrato
-                archivos_contrato = obtener_archivos_por_contrato(manager, contrato['id'])
-                num_archivos = len(archivos_contrato)
-                
-                st.markdown(
-                    f"<div class='carpeta-cerrada'>"
-                    f"🗄️ <strong>{contrato['numero_contrato']}</strong> - {contrato['contratista']}<br>"
-                    f"<small>📁 {num_archivos} archivos</small>"
-                    f"</div>", 
-                    unsafe_allow_html=True
-                )
-    else:
-        st.info("ℹ️ No hay contratos en PostgreSQL")
-
     # ==================================================
     #  BOTÓN DE ACTUALIZACIÓN GENERAL
     # ==================================================

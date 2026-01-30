@@ -1,8 +1,9 @@
 import streamlit as st
 from core.tutorial_state import mark_completed, is_first_time
 
+# CORRECCIÓN: Rutas exactas de los archivos (deben coincidir con los nombres reales)
 PAGES = {
-    "principal": "pages/1_PRINCIPAL.py",
+    "principal": "pages/1_PAGINA PRINCIPAL.py",  # Nombre EXACTO del archivo
     "consulta": "pages/2_CONSULTA.py",
     "archivo": "pages/3_ARCHIVO.py",
 }
@@ -127,22 +128,91 @@ def overlay(page_key: str):
         if st.button("Salir"):
             stop()
 
+# CORRECCIÓN: Encuesta con emojis de caritas del 1 al 5
 def survey():
     st.markdown("---")
     st.subheader("📝 Encuesta de satisfacción (7 preguntas)")
     st.caption("Esto ayuda a validar el sistema con usuarios reales (tu 50% de muestra).")
 
+    # Definir las opciones con emojis
+    opciones_emojis = {
+        1: "😠 Totalmente insatisfecho",
+        2: "😞 Insatisfecho",
+        3: "😐 Neutral",
+        4: "🙂 Satisfecho",
+        5: "😄 Totalmente satisfecho"
+    }
+    
+    opciones_lista = list(opciones_emojis.values())
+
     with st.form("tutorial_survey_form"):
-        p1 = st.slider("1) ¿Qué tan fácil fue usar el sistema?", 1, 5, 4)
-        p2 = st.slider("2) ¿Qué tan claro fue el tutorial?", 1, 5, 4)
-        p3 = st.slider("3) ¿La navegación entre páginas fue intuitiva?", 1, 5, 4)
-        p4 = st.slider("4) ¿Qué tan fácil fue encontrar contratos en Consulta?", 1, 5, 4)
-        p5 = st.slider("5) ¿Qué tan fácil fue subir archivos en Archivo?", 1, 5, 4)
-        p6 = st.slider("6) ¿El sistema respondió rápido?", 1, 5, 4)
-        p7 = st.text_area("7) Comentarios / mejoras (opcional):", placeholder="Ej. mejorar botones, texto, orden...")
+        # Pregunta 1
+        p1_text = st.radio(
+            "1) ¿Qué tan fácil fue usar el sistema?",
+            options=opciones_lista,
+            index=3,  # Por defecto en "Satisfecho"
+            key="p1"
+        )
+        p1 = list(opciones_emojis.keys())[list(opciones_emojis.values()).index(p1_text)]
+        
+        # Pregunta 2
+        p2_text = st.radio(
+            "2) ¿Qué tan claro fue el tutorial?",
+            options=opciones_lista,
+            index=3,
+            key="p2"
+        )
+        p2 = list(opciones_emojis.keys())[list(opciones_emojis.values()).index(p2_text)]
+        
+        # Pregunta 3
+        p3_text = st.radio(
+            "3) ¿La navegación entre páginas fue intuitiva?",
+            options=opciones_lista,
+            index=3,
+            key="p3"
+        )
+        p3 = list(opciones_emojis.keys())[list(opciones_emojis.values()).index(p3_text)]
+        
+        # Pregunta 4
+        p4_text = st.radio(
+            "4) ¿Qué tan fácil fue encontrar contratos en Consulta?",
+            options=opciones_lista,
+            index=3,
+            key="p4"
+        )
+        p4 = list(opciones_emojis.keys())[list(opciones_emojis.values()).index(p4_text)]
+        
+        # Pregunta 5
+        p5_text = st.radio(
+            "5) ¿Qué tan fácil fue subir archivos en Archivo?",
+            options=opciones_lista,
+            index=3,
+            key="p5"
+        )
+        p5 = list(opciones_emojis.keys())[list(opciones_emojis.values()).index(p5_text)]
+        
+        # Pregunta 6
+        p6_text = st.radio(
+            "6) ¿El sistema respondió rápido?",
+            options=opciones_lista,
+            index=3,
+            key="p6"
+        )
+        p6 = list(opciones_emojis.keys())[list(opciones_emojis.values()).index(p6_text)]
+        
+        # Pregunta 7
+        p7 = st.text_area(
+            "7) Comentarios / mejoras (opcional):", 
+            placeholder="Ej. mejorar botones, texto, orden...",
+            key="p7"
+        )
 
         if st.form_submit_button("📨 Enviar encuesta"):
             st.session_state.tutorial["survey_open"] = False
-            st.success("✅ Encuesta enviada. Gracias.")
-            # Aquí luego lo guardamos en PostgreSQL si quieres
+            st.success("✅ Encuesta enviada. ¡Gracias por tu retroalimentación!")
+            
+            # Aquí puedes guardar los resultados en PostgreSQL si lo deseas
+            # Por ejemplo:
+            # guardar_encuesta_en_postgresql(p1, p2, p3, p4, p5, p6, p7)
+            
             st.rerun()

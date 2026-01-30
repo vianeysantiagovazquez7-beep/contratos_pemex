@@ -1,4 +1,3 @@
-# pages/1_PAGINA PRINCIPAL.py
 import streamlit as st
 from pathlib import Path
 import base64
@@ -8,7 +7,7 @@ import os
 import json
 import warnings
 
-from core.database import get_db_manager_por_usuario  # ← CAMBIADO
+from core.database import get_db_manager_por_usuario
 from core.config import UPLOAD_DIR, TEMPLATE_PATH, timestamp
 from core.ocr_utils import pdf_to_text
 from core.text_processing import extract_contract_data
@@ -18,7 +17,8 @@ from core.config import OUTPUT_DIR
 from pathlib import Path
 OUTPUT_DIR = Path("output")
 from core.excel_utils import save_excel, load_excel
-from core.tutorial import init, header_button, overlay, is_active, step, finish_and_open_survey
+# CORRECCIÓN: Solo importar las funciones que existen
+from core.tutorial import init, header_button, overlay
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl.reader.drawings")
 
@@ -106,7 +106,7 @@ def detectar_anexos_robusta(texto):
     anexos_detectados = []
     
     # Patrón principal: busca "Anexo" seguido de comillas y contenido entre ellas
-    patron_principal = r'ANEXO\s+[“”"\'´`]+\s*([A-Z0-9\-]+)\s*[“”"\'´`]+'
+    patron_principal = r'ANEXO\s+[""\'´]+\s*([A-Z0-9\-]+)\s*[""\'´]+'
     
     # Patrón secundario: para casos sin comillas pero con formato claro
     patron_secundario = r'ANEXO\s+([A-Z]{1,3}(?:-[A-Z0-9]{1,3})?)(?:\s|\.|\,|\:|$)'
@@ -136,7 +136,7 @@ def detectar_anexos_robusta(texto):
     # Buscar específicamente anexos conocidos que puedan aparecer sin formato estándar
     for anexo_conocido in anexos_conocidos:
         # Patrón que busca el anexo conocido con contexto de "ANEXO"
-        patron_especifico = rf'ANEXO\s+(?:[“]\"\'´`]*\s*)?{re.escape(anexo_conocido)}(?:\s*[“”"\'´`])?(?:\s|\.|\,|\:|$)'
+        patron_especifico = rf'ANEXO\s+(?:[""\'´]*\s*)?{re.escape(anexo_conocido)}(?:\s*[""\'´])?(?:\s|\.|\,|\:|$)'
         if re.search(patron_especifico, texto_upper) and anexo_conocido not in anexos_detectados:
             anexos_detectados.append(anexo_conocido)
     
@@ -216,7 +216,7 @@ def guardar_contrato_postgresql(archivos_data, datos_contrato, usuario):
         contrato_id = manager.guardar_contrato_completo(archivos_data, datos_postgresql, usuario)
         
         if contrato_id:
-            st.success(f"✅ **Contrato guardado exitosamente en PostgreSQL** (ID: {contrato_id})")
+            st.success(f"✅ *Contrato guardado exitosamente en PostgreSQL* (ID: {contrato_id})")
             return True
         else:
             st.warning("⚠️ No se pudo guardar en la base de datos")
@@ -254,7 +254,7 @@ def generar_excel_contrato():
         anexos = d.get("anexos", [])
         for idx, anexo in enumerate(anexos):
             if idx < 31:  # B29 a B59 = 31 celdas
-                sh[f"B{29+idx}"] = f"ANEXO \"{anexo}\""
+                sh[f"B{29+idx}"] = f'ANEXO "{anexo}"'
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out = OUTPUT_DIR / f"CEDULA_LIBRO_BLANCO_{timestamp()}.xlsx"
@@ -404,16 +404,16 @@ with st.form("form_contratos", clear_on_submit=False):
     anexos_detectados = st.session_state.get("anexos_detectados", [])
     if anexos_detectados:
         st.markdown("<div class='resultado-container'>", unsafe_allow_html=True)
-        st.success(f"✅ **{len(anexos_detectados)} ANEXOS IDENTIFICADOS:**")
+        st.success(f"✅ *{len(anexos_detectados)} ANEXOS IDENTIFICADOS:*")
         
         # Mostrar anexos en formato de lista ordenada
         for i, anexo in enumerate(anexos_detectados, 1):
             st.markdown(f"<div class='anexo-item'>📄 ANEXO \"{anexo}\"</div>", unsafe_allow_html=True)
         
-        st.info(f"**Nota:** Los anexos se insertarán automáticamente en las celdas B29-B59 del Excel")
+        st.info(f"*Nota:* Los anexos se insertarán automáticamente en las celdas B29-B59 del Excel")
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.info("ℹ️ **No se han detectado anexos.** Procesa un contrato para identificar anexos automáticamente.")
+        st.info("ℹ️ *No se han detectado anexos.* Procesa un contrato para identificar anexos automáticamente.")
 
     datos_editados = {
         "area": area,
@@ -507,10 +507,11 @@ with st.form("form_contratos", clear_on_submit=False):
                     exito_postgresql = guardar_contrato_postgresql(archivos_data, d, owner)
                     
                     if exito_postgresql:
-                        st.success("🎉 **¡CONTRATO GUARDADO EXITOSAMENTE EN POSTGRESQL!**")
-                        st.info("🗄️ **PostgreSQL:** Disponible en la base de datos centralizada")
-                    if is_active() and step() == 5:
-                        finish_and_open_survey()
+                        st.success("🎉 *¡CONTRATO GUARDADO EXITOSAMENTE EN POSTGRESQL!*")
+                        st.info("🗄️ *PostgreSQL:* Disponible en la base de datos centralizada")
+                        # CORRECCIÓN: Eliminado el código que usaba funciones no existentes
+                        # if is_active() and step() == 5:
+                        #     finish_and_open_survey()
                     else:
                         st.warning("⚠️ No se pudo guardar el contrato en la base de datos")
                 else:
@@ -533,7 +534,7 @@ with st.form("form_contratos", clear_on_submit=False):
             st.text_area(
                 "Texto OCR completo", 
                 texto[:50000] + ("...[texto truncado para visualización]" if len(texto)>50000 else ""), 
-                height=30000,
+                height=300,
                 key="ocr_text_area"
             )
             st.markdown("</div>", unsafe_allow_html=True)
@@ -544,13 +545,6 @@ with st.form("form_contratos", clear_on_submit=False):
 if st.session_state.get("excel_generado"):
     st.markdown("---")
     st.markdown("<div class='descarga-container'>", unsafe_allow_html=True)
-    st.success("📊 **EXCEL GENERADO EXITOSAMENTE**")
+    st.success("📊 *EXCEL GENERADO EXITOSAMENTE*")
     
-    st.download_button(
-        label="📥 DESCARGAR ARCHIVO EXCEL",
-        data=st.session_state["excel_generado"],
-        file_name=st.session_state["excel_filename"],
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.download

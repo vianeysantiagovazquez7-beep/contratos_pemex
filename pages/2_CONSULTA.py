@@ -4,7 +4,8 @@ from pathlib import Path
 import re
 import base64
 import json 
-from core.database import get_db_manager_por_usuario # Importar el nuevo manager
+from core.database import get_db_manager_por_usuario
+# CORRECCIÓN: Solo importar las funciones que existen
 from core.tutorial import init, header_button, overlay
 
 # --- Configuración de rutas ---
@@ -281,6 +282,7 @@ def obtener_archivos_por_contrato(manager, contrato_id):
         return archivos
         
     except Exception as e:
+        st.error(f"Error obteniendo archivos: {str(e)}")
         return []
 
 def buscar_contratos_avanzada(manager, texto_busqueda):
@@ -353,6 +355,7 @@ def buscar_contratos_avanzada(manager, texto_busqueda):
         return resultados_finales
         
     except Exception as e:
+        st.error(f"Error en búsqueda: {str(e)}")
         return []
 
 # ==================================================
@@ -402,7 +405,9 @@ with st.form("form_consulta", clear_on_submit=False):
             st.session_state.archivos_cargados = []
         
         # Realizar búsqueda si hay texto
-        if busqueda:
+        buscar_button = st.form_submit_button("🔍 Buscar", use_container_width=True)
+        
+        if buscar_button and busqueda:
             with st.spinner("🔍 Buscando contratos..."):
                 resultados = buscar_contratos_avanzada(manager, busqueda)
                 st.session_state.contratos_encontrados = resultados
@@ -414,14 +419,17 @@ with st.form("form_consulta", clear_on_submit=False):
             
             # Selección de contrato
             if len(st.session_state.contratos_encontrados) > 1:
-                seleccion = st.selectbox(
+                opciones = [
+                    f"{c.get('numero_contrato', 'N/A')} - {c.get('contratista', 'Sin nombre')}"
+                    for c in st.session_state.contratos_encontrados
+                ]
+                seleccion_index = st.selectbox(
                     "Selecciona un contrato para ver sus archivos:",
-                    st.session_state.contratos_encontrados,
-                    format_func=lambda c: f"{c.get('numero_contrato', 'N/A')} - {c.get('contratista', 'Sin nombre')}",
-                    key="select_contrato_db"
+                    range(len(opciones)),
+                    format_func=lambda i: opciones[i]
                 )
-                if seleccion:
-                    st.session_state.contrato_seleccionado = seleccion
+                seleccion = st.session_state.contratos_encontrados[seleccion_index]
+                st.session_state.contrato_seleccionado = seleccion
             else:
                 seleccion = st.session_state.contratos_encontrados[0]
                 st.session_state.contrato_seleccionado = seleccion
@@ -435,137 +443,108 @@ with st.form("form_consulta", clear_on_submit=False):
             st.markdown(f"<div class='carpeta-header'>📁 CONTRATO: {contrato_info.get('numero_contrato', 'N/A')}</div>", unsafe_allow_html=True)
             
             # Botón para cargar archivos
-            if st.form_submit_button("📂 CARGAR ARCHIVOS DEL CONTRATO", use_container_width=True):
+            cargar_archivos_btn = st.form_submit_button("📂 CARGAR ARCHIVOS DEL CONTRATO", use_container_width=True)
+            
+            # Mostrar información del contrato
+            st.markdown("*📋 Información del contrato:*")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"- *Número:* {contrato_info.get('numero_contrato', 'No especificado')}")
+                st.write(f"- *Contratista:* {contrato_info.get('contratista', 'No especificado')}")
+                st.write(f"- *Área:* {contrato_info.get('area', 'No especificado')}")
+            with col2:
+                st.write(f"- *Monto:* {contrato_info.get('monto_contrato', 'No especificado')}")
+                st.write(f"- *Plazo:* {contrato_info.get('plazo_dias', 'No especificado')} días")
+                st.write(f"- *Fecha Inicio:* {contrato_info.get('fecha_inicio', 'No especificado')}")
+            
+            # Cargar archivos si se presiona el botón
+            if cargar_archivos_btn:
                 with st.spinner("🔍 Cargando archivos..."):
                     archivos = obtener_archivos_por_contrato(manager, contrato_id)
                     st.session_state.archivos_cargados = archivos
-            
-            # Mostrar información del contrato
-            st.markdown("**📋 Información del contrato:**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"- **Número:** {contrato_info.get('numero_contrato', 'No especificado')}")
-                st.write(f"- **Contratista:** {contrato_info.get('contratista', 'No especificado')}")
-                st.write(f"- **Área:** {contrato_info.get('area', 'No especificado')}")
-            with col2:
-                st.write(f"- **Monto:** {contrato_info.get('monto_contrato', 'No especificado')}")
-                st.write(f"- **Plazo:** {contrato_info.get('plazo_dias', 'No especificado')} días")
-                st.write(f"- **Fecha Inicio:** {contrato_info.get('fecha_inicio', 'No especificado')}")
-            
-            # Mostrar archivos si están cargados
-            if st.session_state.archivos_cargados:
-                st.markdown("---")
-                st.markdown(f"### 📎 Archivos del Contrato ({len(st.session_state.archivos_cargados)} encontrados)")
-                
-                # Agrupar archivos por categoría
-                archivos_por_categoria = {}
-                for archivo in st.session_state.archivos_cargados:
-                    categoria = archivo.get('categoria', 'OTROS')
-                    if categoria not in archivos_por_categoria:
-                        archivos_por_categoria[categoria] = []
-                    archivos_por_categoria[categoria].append(archivo)
-                
-                # Definir orden de visualización
-                orden_categorias = ['CONTRATO', 'CEDULAS', 'ANEXOS', 'SOPORTES FISICOS', 'OTROS']
-                
-                for categoria in orden_categorias:
-                    if categoria in archivos_por_categoria:
-                        # Icono según categoría
-                        iconos = {
-                            'CONTRATO': '📄',
-                            'CEDULAS': '📋',
-                            'ANEXOS': '📎',
-                            'SOPORTES FISICOS': '📂',
-                            'OTROS': '📁'
-                        }
-                        icono = iconos.get(categoria, '📁')
-                        
-                        st.markdown(f"#### {icono} {categoria} ({len(archivos_por_categoria[categoria])} archivos)")
-                        
-                        for archivo in archivos_por_categoria[categoria]:
-                            size_bytes = archivo.get('tamaño_bytes', 0)
-                            size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
-                            nombre_archivo = archivo.get('nombre_archivo', 'archivo_sin_nombre')
-                            archivo_id = archivo.get('id', '0')
-                            contenido = archivo.get('contenido', b'')
-                            
-                            # Crear un contenedor para el archivo
-                            st.markdown(f"<div class='archivo-item'>", unsafe_allow_html=True)
-                            
-                            col1, col2 = st.columns([3, 1])
-                            with col1:
-                                st.markdown(f"**{nombre_archivo}**")
-                                if size_mb > 0:
-                                    st.markdown(f"*Tamaño: {size_mb:.2f} MB*")
-                                else:
-                                    st.markdown(f"*Tamaño: Desconocido*")
-                            
-                            with col2:
-                                # ✅ BOTÓN DE DESCARGA DENTRO DEL FORM - SOLUCIÓN DEFINITIVA
-                                if contenido:
-                                    # ID único para este archivo
-                                    unique_id = f"download_{contrato_id}_{categoria}_{archivo_id}"
-                                    
-                                    # Convertir a base64
-                                    b64 = base64.b64encode(contenido).decode()
-                                    
-                                    # Crear enlace de descarga oculto
-                                    st.markdown(f'''
-                                    <div class="download-link">
-                                        <a id="{unique_id}_link" href="data:application/octet-stream;base64,{b64}" 
-                                           download="{nombre_archivo}" style="display:none;">
-                                        </a>
-                                    </div>
-                                    ''', unsafe_allow_html=True)
-                                    
-                                    # Botón que activa JavaScript para descargar
-                                    if st.form_submit_button("📥 Descargar", 
-                                                            key=f"btn_{unique_id}",
-                                                            use_container_width=True):
-                                        # Inyectar JavaScript para simular clic en enlace
-                                        js_code = f'''
-                                        <script>
-                                        (function() {{
-                                            var link = document.getElementById('{unique_id}_link');
-                                            if (link) {{
-                                                link.click();
-                                            }}
-                                        }})();
-                                        </script>
-                                        '''
-                                        st.components.v1.html(js_code, height=0)
-                                else:
-                                    st.warning("Sin contenido")
-                            
-                            st.markdown("</div>", unsafe_allow_html=True)
-            elif st.session_state.archivos_cargados == []:
-                st.info("ℹ️ Presiona 'CARGAR ARCHIVOS DEL CONTRATO' para ver los archivos disponibles.")
 
-    # --- Botones de acción ---
+# SECCIÓN FUERA DEL FORMULARIO PARA MOSTRAR ARCHIVOS Y BOTONES DE DESCARGA
+if st.session_state.get("archivos_cargados"):
     st.markdown("---")
-    col1, col2, col3 = st.columns(3)
+    st.markdown(f"### 📎 Archivos del Contrato ({len(st.session_state.archivos_cargados)} encontrados)")
     
-    with col1:
-        actualizar = st.form_submit_button("🔄 ACTUALIZAR", use_container_width=True)
+    # Agrupar archivos por categoría
+    archivos_por_categoria = {}
+    for archivo in st.session_state.archivos_cargados:
+        categoria = archivo.get('categoria', 'OTROS')
+        if categoria not in archivos_por_categoria:
+            archivos_por_categoria[categoria] = []
+        archivos_por_categoria[categoria].append(archivo)
     
-    with col2:
-        limpiar = st.form_submit_button("🗑️ LIMPIAR BÚSQUEDA", use_container_width=True)
+    # Definir orden de visualización
+    orden_categorias = ['CONTRATO', 'CEDULAS', 'ANEXOS', 'SOPORTES FISICOS', 'OTROS']
     
-    with col3:
-        nueva_busqueda = st.form_submit_button("🔍 NUEVA BÚSQUEDA", use_container_width=True)
-    
-    # Manejar acciones de los botones
-    if actualizar:
-        st.rerun()
-    
-    if limpiar:
-        st.session_state.contratos_encontrados = []
-        st.session_state.contrato_seleccionado = None
-        st.session_state.archivos_cargados = []
-        st.rerun()
-    
-    if nueva_busqueda:
-        st.session_state.contratos_encontrados = []
-        st.session_state.contrato_seleccionado = None
-        st.session_state.archivos_cargados = []
-        st.rerun()
+    for categoria in orden_categorias:
+        if categoria in archivos_por_categoria:
+            # Icono según categoría
+            iconos = {
+                'CONTRATO': '📄',
+                'CEDULAS': '📋',
+                'ANEXOS': '📎',
+                'SOPORTES FISICOS': '📂',
+                'OTROS': '📁'
+            }
+            icono = iconos.get(categoria, '📁')
+            
+            st.markdown(f"#### {icono} {categoria} ({len(archivos_por_categoria[categoria])} archivos)")
+            
+            for archivo in archivos_por_categoria[categoria]:
+                size_bytes = archivo.get('tamaño_bytes', 0)
+                size_mb = size_bytes / 1024 / 1024 if size_bytes > 0 else 0
+                nombre_archivo = archivo.get('nombre_archivo', 'archivo_sin_nombre')
+                contenido = archivo.get('contenido', b'')
+                
+                # Crear un contenedor para el archivo
+                st.markdown("<div class='archivo-item'>", unsafe_allow_html=True)
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"*{nombre_archivo}*")
+                    if size_mb > 0:
+                        st.markdown(f"Tamaño: {size_mb:.2f} MB")
+                    else:
+                        st.markdown(f"Tamaño: Desconocido")
+                
+                with col2:
+                    # ✅ BOTÓN DE DESCARGA USANDO st.download_button (FUERA DEL FORMULARIO)
+                    if contenido:
+                        try:
+                            # Crear botón de descarga
+                            st.download_button(
+                                label="⬇️ Descargar",
+                                data=contenido,
+                                file_name=nombre_archivo,
+                                mime="application/octet-stream",
+                                use_container_width=True,
+                                key=f"download_{nombre_archivo}_{categoria}"
+                            )
+                        except Exception as e:
+                            st.error(f"Error al crear botón de descarga: {str(e)}")
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+
+# Estadísticas al final
+st.markdown("---")
+st.markdown("### 📊 Estadísticas")
+col_stat1, col_stat2, col_stat3 = st.columns(3)
+with col_stat1:
+    st.metric("Contratos encontrados", len(st.session_state.get("contratos_encontrados", [])))
+with col_stat2:
+    st.metric("Archivos cargados", len(st.session_state.get("archivos_cargados", [])))
+with col_stat3:
+    if st.session_state.get("contrato_seleccionado"):
+        st.metric("Contrato seleccionado", st.session_state.contrato_seleccionado.get('numero_contrato', 'N/A'))
+    else:
+        st.metric("Contrato seleccionado", "Ninguno")
+
+# Botón para limpiar búsqueda
+if st.button("🧹 Limpiar búsqueda", use_container_width=True):
+    st.session_state.contratos_encontrados = []
+    st.session_state.contrato_seleccionado = None
+    st.session_state.archivos_cargados = []
+    st.rerun()
